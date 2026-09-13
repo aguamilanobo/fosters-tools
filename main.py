@@ -61,3 +61,52 @@ def recommend_size(
         "weight_kg": weight_kg,
         "usual_size": usual_size,
     }
+
+from pydantic import BaseModel
+from typing import Optional, List
+
+class OrderPrepRequest(BaseModel):
+    product: Optional[str] = None
+    color: Optional[str] = None
+    size: Optional[str] = None
+    quantity: Optional[int] = None
+    city: Optional[str] = None
+    name: Optional[str] = None
+    phone: Optional[str] = None
+
+
+@app.post("/prepare-order")
+def prepare_order(data: OrderPrepRequest):
+    quantity = data.quantity if data.quantity and data.quantity > 0 else 1
+
+    missing_fields: List[str] = []
+
+    if not data.product:
+        missing_fields.append("product")
+    if not data.color:
+        missing_fields.append("color")
+    if not data.size:
+        missing_fields.append("size")
+    if not data.city:
+        missing_fields.append("city")
+    if not data.name:
+        missing_fields.append("name")
+
+    ready_to_order = len(missing_fields) == 0
+
+    return {
+        "product": data.product,
+        "color": data.color,
+        "size": data.size,
+        "quantity": quantity,
+        "city": data.city,
+        "name": data.name,
+        "phone": data.phone,
+        "missing_fields": missing_fields,
+        "ready_to_order": ready_to_order,
+        "next_step": (
+            "ready"
+            if ready_to_order
+            else f"ask_for_{missing_fields[0]}"
+        )
+    }
