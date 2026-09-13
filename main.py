@@ -287,3 +287,61 @@ def get_discount(quantity: int):
         "unit_price_bs": offer["unit_price"],
         "message": f"{quantity} prendas por {offer['total']} Bs"
     }
+
+from pydantic import BaseModel
+from typing import Optional
+
+
+class LeadClassifyRequest(BaseModel):
+    has_replied: bool = False
+    has_product: bool = False
+    has_color: bool = False
+    has_size: bool = False
+    wants_to_buy: bool = False
+    asks_for_payment: bool = False
+    asks_for_human: bool = False
+    has_complaint: bool = False
+    asks_for_discount: bool = False
+
+
+@app.post("/classify-lead")
+def classify_lead(data: LeadClassifyRequest):
+
+    if data.asks_for_human or data.has_complaint or data.asks_for_payment:
+        return {
+            "stage": "handoff",
+            "intent_level": "high",
+            "should_handoff": True,
+            "reason": "Caso que requiere atención humana."
+        }
+
+    if data.wants_to_buy and data.has_product and data.has_color and data.has_size:
+        return {
+            "stage": "ready_to_order",
+            "intent_level": "high",
+            "should_handoff": False,
+            "reason": "Cliente con intención clara y variante definida."
+        }
+
+    if data.has_color or data.has_size or data.wants_to_buy or data.asks_for_discount:
+        return {
+            "stage": "interested",
+            "intent_level": "medium",
+            "should_handoff": False,
+            "reason": "Cliente mostrando interés comercial."
+        }
+
+    if data.has_replied:
+        return {
+            "stage": "contacted",
+            "intent_level": "low",
+            "should_handoff": False,
+            "reason": "Cliente ya interactuó con la atención."
+        }
+
+    return {
+        "stage": "new",
+        "intent_level": "low",
+        "should_handoff": False,
+        "reason": "Lead nuevo sin señales adicionales."
+    }
