@@ -185,3 +185,79 @@ def prepare_shipping(data: ShippingPrepRequest):
         "handoff_required": True,
         "message": "Nombre completo y CI recibidos. Derivar a administrador."
     }
+
+from typing import Optional
+
+FOSTERS_CATALOG = {
+    "navy": {
+        "name": "navy",
+        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/0a3d94035bd27b49047864197f5c3724017ac0fe.png"
+    },
+    "celeste": {
+        "name": "celeste",
+        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/5d9217a7149d62bcfeff3edbaf83091bfc22f661.png"
+    },
+    "blanca": {
+        "name": "blanca",
+        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/3d7da6940f4817961c6f58400d329ac7c66874d9.png"
+    },
+    "crema": {
+        "name": "crema",
+        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/bf954fea7e166081bfcec3c599301ca8e23e855f.png"
+    },
+    "negra": {
+        "name": "negra",
+        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/ae053b22c7ea2916219184518d0e10a1942790d1.png"
+    },
+    "marron": {
+        "name": "marron",
+        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/7a380b7ad438eba299085eb37d986d264eadd7ee.png"
+    },
+    "verde": {
+        "name": "verde",
+        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/288305bcae4d8fc5471e78bd9914fdd2b3b49840.png"
+    }
+}
+
+
+@app.get("/catalog")
+def get_catalog(color: Optional[str] = None):
+    if color:
+        normalized = color.strip().lower()
+
+        aliases = {
+            "azul": "navy",
+            "azul marino": "navy",
+            "marino": "navy",
+            "blanco": "blanca",
+            "negro": "negra",
+            "marrón": "marron",
+            "cafe": "marron",
+            "café": "marron",
+            "beige": "crema",
+            "arena": "crema",
+        }
+
+        normalized = aliases.get(normalized, normalized)
+
+        item = FOSTERS_CATALOG.get(normalized)
+
+        if not item:
+            return {
+                "found": False,
+                "color": color,
+                "available_colors": list(FOSTERS_CATALOG.keys())
+            }
+
+        return {
+            "found": True,
+            "product": "Henley Fosters",
+            "color": item["name"],
+            "image_url": item["image_url"]
+        }
+
+    return {
+        "found": True,
+        "product": "Henley Fosters",
+        "colors": list(FOSTERS_CATALOG.values())
+    }
