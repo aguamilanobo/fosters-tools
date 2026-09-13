@@ -261,3 +261,29 @@ def get_catalog(color: Optional[str] = None):
         "product": "Henley Fosters",
         "colors": list(FOSTERS_CATALOG.values())
     }
+
+@app.get("/discount")
+def get_discount(quantity: int):
+    offers = {
+        2: {"total": 560, "unit_price": 280},
+        3: {"total": 810, "unit_price": 270},
+        4: {"total": 1050, "unit_price": 262.5},
+        5: {"total": 1250, "unit_price": 250},
+    }
+
+    offer = offers.get(quantity)
+
+    if not offer:
+        return {
+            "found": False,
+            "quantity": quantity,
+            "message": "No hay una oferta oficial configurada para esa cantidad."
+        }
+
+    return {
+        "found": True,
+        "quantity": quantity,
+        "total_bs": offer["total"],
+        "unit_price_bs": offer["unit_price"],
+        "message": f"{quantity} prendas por {offer['total']} Bs"
+    }
