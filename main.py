@@ -110,3 +110,91 @@ def prepare_order(data: OrderPrepRequest):
             else f"ask_for_{missing_fields[0]}"
         )
     }
+    from pydantic import BaseModel
+from typing import Optional, List
+
+
+class ShippingPrepRequest(BaseModel):
+    department: Optional[str] = None
+    city: Optional[str] = None
+    order_confirmed: Optional[bool] = False
+    location_shared: Optional[bool] = False
+    full_name: Optional[str] = None
+    ci: Optional[str] = None
+    transport: Optional[str] = None
+
+
+@app.post("/prepare-shipping")
+def prepare_shipping(data: ShippingPrepRequest):
+    department = (data.department or "").strip().lower()
+    city = (data.city or "").strip().lower()
+
+    is_santa_cruz = (
+        "santa cruz" in department
+        or "santa cruz" in city
+        or department in ["scz", "santa cruz de la sierra"]
+        or city in ["scz", "santa cruz de la sierra"]
+    )
+
+    if not data.order_confirmed:
+        return {
+            "shipping_type": "not_ready",
+            "missing_fields": [],
+            "next_step": "wait_for_order_confirmation",
+            "handoff_required": False,
+            "message": "No pedir datos de envío todavía."
+        }
+
+    missing_fields: List[str] = []
+
+    if is_santa_cruz:
+        if not data.location_shared:
+            missing_fields.append("location")
+
+        if data.location_shared:
+            return {
+                "shipping_type": "santa_cruz",
+                "missing_fields": [],
+                "next_step": "handoff_admin",
+                "handoff_required": True,
+                "message": "Ubicación recibida. Derivar a administrador."
+            }
+
+        return {
+            "shipping_type": "santa_cruz",
+            "missing_fields": missing_fields,
+            "next_step": "ask_location",
+            "handoff_required": False,
+            "message": "Pedir ubicación para coordinar envío."
+        }
+
+    if not data.full_name:
+        missing_fields.append("full_name")
+    if not data.ci:
+        missing_fields.append("ci")
+    if not data.transport:
+        missing_fields.append("transport")
+
+    if not missing_fields:
+        return {
+            "shipping_type": "other_department",
+            "missing_fields": [],
+            "next_step": "handoff_admin",
+            "handoff_required": True,
+            "message": "Datos completos. Derivar a administrador."
+        }
+
+    if "full_name" in missing_fields or "ci" in missing_fields:
+        next_step = "ask_full_name_and_ci"
+        message = "Pedir nombre completo y CI."
+    else:
+        next_step = "ask_transport"
+        message = "Pedir transporte o sucursal."
+
+    return {
+        "shipping_type": "other_department",
+        "missing_fields": missing_fields,
+        "next_step": next_step,
+        "handoff_required": False,
+        "message": message
+    }
