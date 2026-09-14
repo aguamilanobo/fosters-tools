@@ -1,13 +1,250 @@
 from fastapi import FastAPI, Query, Header, HTTPException
-
+from fastapi.responses import HTMLResponse
 app = FastAPI()
 
 API_TOKEN = "fosters_bot_2026"
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def root():
-    return {"status": "ok", "service": "fosters-tools"}
+    return """
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>FOSTERS AI Tools</title>
+
+        <style>
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
+            body {
+                background: #0a0a0a;
+                color: #f5f5f0;
+                font-family: Arial, Helvetica, sans-serif;
+                min-height: 100vh;
+            }
+
+            .container {
+                width: 90%;
+                max-width: 1100px;
+                margin: auto;
+                padding: 70px 0;
+            }
+
+            .header {
+                margin-bottom: 50px;
+            }
+
+            .brand {
+                font-family: Georgia, 'Times New Roman', serif;
+                font-size: 42px;
+                letter-spacing: 8px;
+                margin-bottom: 10px;
+            }
+
+            .subtitle {
+                color: #888;
+                font-size: 14px;
+                letter-spacing: 2px;
+                text-transform: uppercase;
+            }
+
+            .status {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                margin-top: 24px;
+                padding: 9px 14px;
+                border: 1px solid #2d2d2d;
+                border-radius: 999px;
+                font-size: 13px;
+                color: #bbb;
+            }
+
+            .dot {
+                width: 8px;
+                height: 8px;
+                background: #5ad66f;
+                border-radius: 50%;
+            }
+
+            .section-title {
+                margin-bottom: 20px;
+                font-size: 13px;
+                color: #777;
+                letter-spacing: 2px;
+                text-transform: uppercase;
+            }
+
+            .grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 15px;
+            }
+
+            .card {
+                background: #111;
+                border: 1px solid #222;
+                border-radius: 14px;
+                padding: 24px;
+                transition: 0.2s ease;
+            }
+
+            .card:hover {
+                transform: translateY(-3px);
+                border-color: #3a3a3a;
+            }
+
+            .card h3 {
+                font-size: 17px;
+                margin-bottom: 9px;
+                font-weight: 500;
+            }
+
+            .endpoint {
+                display: inline-block;
+                margin-bottom: 12px;
+                color: #888;
+                font-family: monospace;
+                font-size: 13px;
+            }
+
+            .card p {
+                color: #aaa;
+                line-height: 1.6;
+                font-size: 14px;
+            }
+
+            .footer {
+                margin-top: 50px;
+                padding-top: 25px;
+                border-top: 1px solid #1f1f1f;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 15px;
+                color: #666;
+                font-size: 12px;
+            }
+
+            .docs {
+                color: #ddd;
+                text-decoration: none;
+                border: 1px solid #333;
+                padding: 10px 15px;
+                border-radius: 8px;
+            }
+
+            .docs:hover {
+                background: #181818;
+            }
+
+            @media (max-width: 600px) {
+                .brand {
+                    font-size: 30px;
+                    letter-spacing: 5px;
+                }
+
+                .container {
+                    padding: 40px 0;
+                }
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="container">
+
+            <div class="header">
+                <div class="brand">FOSTERS</div>
+                <div class="subtitle">AI Tools Infrastructure</div>
+
+                <div class="status">
+                    <span class="dot"></span>
+                    System operational
+                </div>
+            </div>
+
+            <div class="section-title">
+                Active Skills
+            </div>
+
+            <div class="grid">
+
+                <div class="card">
+                    <h3>Size Recommendation</h3>
+                    <span class="endpoint">GET /recommend-size</span>
+                    <p>
+                        Recommends the ideal Fosters size based on the customer's
+                        height and weight.
+                    </p>
+                </div>
+
+                <div class="card">
+                    <h3>Order Preparation</h3>
+                    <span class="endpoint">POST /prepare-order</span>
+                    <p>
+                        Structures product, color, size and quantity before
+                        starting the shipping process.
+                    </p>
+                </div>
+
+                <div class="card">
+                    <h3>Shipping Preparation</h3>
+                    <span class="endpoint">POST /prepare-shipping</span>
+                    <p>
+                        Determines the correct shipping flow for Santa Cruz
+                        and other departments.
+                    </p>
+                </div>
+
+                <div class="card">
+                    <h3>Product Catalog</h3>
+                    <span class="endpoint">GET /catalog</span>
+                    <p>
+                        Returns available Henley colors and their corresponding
+                        product images.
+                    </p>
+                </div>
+
+                <div class="card">
+                    <h3>Discount Engine</h3>
+                    <span class="endpoint">GET /discount</span>
+                    <p>
+                        Returns official quantity discounts only when requested
+                        explicitly by the customer.
+                    </p>
+                </div>
+
+                <div class="card">
+                    <h3>Lead Classification</h3>
+                    <span class="endpoint">POST /classify-lead</span>
+                    <p>
+                        Classifies commercial intent and determines when human
+                        handoff is required.
+                    </p>
+                </div>
+
+            </div>
+
+            <div class="footer">
+                <span>FOSTERS · Santa Cruz, Bolivia</span>
+
+                <a class="docs" href="/docs">
+                    API Documentation
+                </a>
+            </div>
+
+        </div>
+    </body>
+    </html>
+    """
 
 
 @app.get("/recommend-size")
