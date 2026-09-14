@@ -231,6 +231,15 @@ def root():
                     </p>
                 </div>
 
+                <div class="card">
+                    <h3>Next Action Decision</h3>
+                    <span class="endpoint">POST /decide-next-action</span>
+                    <p>
+                        Chooses the next commercial action using deterministic
+                        priorities for sales, shipping and human handoff.
+                    </p>
+                </div>
+
             </div>
 
             <div class="footer">
@@ -347,8 +356,6 @@ def prepare_order(data: OrderPrepRequest):
             else f"ask_for_{missing_fields[0]}"
         )
     }
-    from pydantic import BaseModel
-from typing import Optional, List
 
 
 class ShippingPrepRequest(BaseModel):
@@ -423,7 +430,6 @@ def prepare_shipping(data: ShippingPrepRequest):
         "message": "Nombre completo y CI recibidos. Derivar a administrador."
     }
 
-from typing import Optional
 
 FOSTERS_CATALOG = {
     "navy": {
@@ -499,6 +505,7 @@ def get_catalog(color: Optional[str] = None):
         "colors": list(FOSTERS_CATALOG.values())
     }
 
+
 @app.get("/discount")
 def get_discount(quantity: int):
     offers = {
@@ -524,9 +531,6 @@ def get_discount(quantity: int):
         "unit_price_bs": offer["unit_price"],
         "message": f"{quantity} prendas por {offer['total']} Bs"
     }
-
-from pydantic import BaseModel
-from typing import Optional
 
 
 class LeadClassifyRequest(BaseModel):
@@ -581,4 +585,187 @@ def classify_lead(data: LeadClassifyRequest):
         "intent_level": "low",
         "should_handoff": False,
         "reason": "Lead nuevo sin señales adicionales."
+    }
+
+
+class NextActionRequest(BaseModel):
+    product: Optional[str] = None
+    color: Optional[str] = None
+    size: Optional[str] = None
+    quantity: Optional[int] = 1
+
+    city: Optional[str] = None
+    department: Optional[str] = None
+
+    wants_to_buy: bool = False
+    asks_for_catalog: bool = False
+    asks_for_size_help: bool = False
+    asks_for_discount: bool = False
+
+    asks_for_payment: bool = False
+    asks_for_human: bool = False
+    has_complaint: bool = False
+
+    location_shared: bool = False
+    full_name: Optional[str] = None
+    ci: Optional[str] = None
+
+
+@app.post("/decide-next-action")
+def decide_next_action(data: NextActionRequest):
+
+    # PRIORIDAD 1: DERIVACIÓN HUMANA
+    if data.asks_for_payment or data.asks_for_human or data.has_complaint:
+        reason = "human_request"
+
+        if data.asks_for_payment:
+            reason = "payment_request"
+        elif data.has_complaint:
+            reason = "complaint"
+
+        return {
+            "next_action": "handoff",
+            "priority": "critical",
+            "should_handoff": True,
+            "reason": reason,
+            "missing_fields": [],
+            "message_hint": "Derivar al administrador y detener la IA."
+        }
+
+    # PRIORIDAD 2: AYUDA DE TALLE
+    if data.asks_for_size_help and not data.size:
+        return {
+            "next_action": "recommend_size",
+            "priority": "high",
+            "should_handoff": False,
+            "reason": "size_help_requested",
+            "missing_fields": ["height_cm", "weight_kg"],
+            "message_hint": "Pedir altura y peso si todavía no fueron proporcionados."
+        }
+
+    # PRIORIDAD 3: CATÁLOGO
+    if data.asks_for_catalog and not data.color:
+        return {
+            "next_action": "send_catalog",
+            "priority": "normal",
+            "should_handoff": False,
+            "reason": "catalog_requested",
+            "missing_fields": [],
+            "message_hint": "Usar get_fosters_catalog y enviar todas las imágenes."
+        }
+
+    # PRIORIDAD 4: DESCUENTO
+    if data.asks_for_discount:
+        if not data.quantity or data.quantity <= 1:
+            return {
+                "next_action": "ask_quantity_for_discount",
+                "priority": "normal",
+                "should_handoff": False,
+                "reason": "discount_requested_without_quantity",
+                "missing_fields": ["quantity"],
+                "message_hint": "Preguntar cuántas prendas quiere llevar."
+            }
+
+        return {
+            "next_action": "get_discount",
+            "priority": "normal",
+            "should_handoff": False,
+            "reason": "discount_requested",
+            "missing_fields": [],
+            "message_hint": "Usar get_fosters_discount."
+        }
+
+    # PRIORIDAD 5: COMPLETAR PEDIDO
+    if data.wants_to_buy:
+        if not data.color:
+            return {
+                "next_action": "ask_color",
+                "priority": "normal",
+                "should_handoff": False,
+                "reason": "missing_color",
+                "missing_fields": ["color"],
+                "message_hint": "Preguntar qué color quiere."
+            }
+
+        if not data.size:
+            return {
+                "next_action": "ask_size",
+                "priority": "normal",
+                "should_handoff": False,
+                "reason": "missing_size",
+                "missing_fields": ["size"],
+                "message_hint": "Preguntar qué talle busca."
+            }
+
+        if not data.city and not data.department:
+            return {
+                "next_action": "ask_destination",
+                "priority": "high",
+                "should_handoff": False,
+                "reason": "order_ready_missing_destination",
+                "missing_fields": ["city_or_department"],
+                "message_hint": "Preguntar si es para Santa Cruz o envío a otro departamento."
+            }
+
+        destination = f"{data.city or ''} {data.department or ''}".strip().lower()
+
+        is_santa_cruz = (
+            "santa cruz" in destination
+            or destination == "scz"
+        )
+
+        if is_santa_cruz:
+            if not data.location_shared:
+                return {
+                    "next_action": "ask_location",
+                    "priority": "high",
+                    "should_handoff": False,
+                    "reason": "santa_cruz_missing_location",
+                    "missing_fields": ["location"],
+                    "message_hint": "Pedir ubicación para coordinar el envío."
+                }
+
+            return {
+                "next_action": "handoff",
+                "priority": "critical",
+                "should_handoff": True,
+                "reason": "santa_cruz_shipping_ready",
+                "missing_fields": [],
+                "message_hint": "Ubicación recibida. Derivar al administrador."
+            }
+
+        missing_shipping = []
+
+        if not data.full_name:
+            missing_shipping.append("full_name")
+
+        if not data.ci:
+            missing_shipping.append("ci")
+
+        if missing_shipping:
+            return {
+                "next_action": "ask_name_ci",
+                "priority": "high",
+                "should_handoff": False,
+                "reason": "other_department_missing_data",
+                "missing_fields": missing_shipping,
+                "message_hint": "Pedir únicamente nombre completo y CI."
+            }
+
+        return {
+            "next_action": "handoff",
+            "priority": "critical",
+            "should_handoff": True,
+            "reason": "other_department_shipping_ready",
+            "missing_fields": [],
+            "message_hint": "Nombre y CI recibidos. Derivar al administrador."
+        }
+
+    return {
+        "next_action": "continue_sales",
+        "priority": "normal",
+        "should_handoff": False,
+        "reason": "no_critical_action",
+        "missing_fields": [],
+        "message_hint": "Continuar la conversación comercial normalmente."
     }
