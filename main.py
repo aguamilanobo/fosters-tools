@@ -57,7 +57,7 @@ def root():
                 <div class="card"><h3>Shipping Preparation</h3><span class="endpoint">POST /prepare-shipping</span><p>Determines the correct shipping flow.</p></div>
                 <div class="card"><h3>Product Catalog</h3><span class="endpoint">GET /catalog</span><p>Returns current Henley colors, sizes and images.</p></div>
                 <div class="card"><h3>Pancake Product Sync</h3><span class="endpoint">GET /products?page=1&pageSize=50</span><p>Paginated product feed for Pancake.</p></div>
-                <div class="card"><h3>Pancake Sync Test</h3><span class="endpoint">GET /products-test?page=1&pageSize=50</span><p>Minimal one-product feed for Pancake synchronization testing.</p></div>
+                <div class="card"><h3>Pancake Sync Test</h3><span class="endpoint">GET /products-test?page=1&pageSize=50</span><p>Minimal one-product feed with warehouse stock for Pancake synchronization testing.</p></div>
                 <div class="card"><h3>Discount Engine</h3><span class="endpoint">GET /discount</span><p>Returns official quantity discounts when explicitly requested.</p></div>
                 <div class="card"><h3>Lead Classification</h3><span class="endpoint">POST /classify-lead</span><p>Classifies commercial intent and human handoff.</p></div>
                 <div class="card"><h3>Next Action Decision</h3><span class="endpoint">POST /decide-next-action</span><p>Chooses the next commercial action using deterministic priorities.</p></div>
@@ -75,6 +75,7 @@ def root():
 
 FOSTERS_PRICE_BS = 300
 FOSTERS_COST_BS = 110
+PANCAKE_WAREHOUSE_ID = "c52e67ad-d9d0-4276-abe4-e0c9f1f7d2da"
 
 FOSTERS_CATALOG = {
     "negro": {
@@ -297,16 +298,8 @@ def get_products_test(
         "id": "fosters-henley-test",
         "permalink": "https://fosters-tools.onrender.com/catalog",
         "product_attributes": [
-            {
-                "name": "Color",
-                "values": ["Negro"],
-                "id": "",
-            },
-            {
-                "name": "Size",
-                "values": ["M"],
-                "id": "",
-            },
+            {"name": "Color", "values": ["Negro"], "id": ""},
+            {"name": "Size", "values": ["M"], "id": ""},
         ],
         "variations": [
             {
@@ -326,7 +319,12 @@ def get_products_test(
         ],
         "weight": 1,
         "custom_id": "FOSTERS-HENLEY-TEST",
-        "variations_warehouses": [],
+        "variations_warehouses": [
+            {
+                "remain_quantity": 10,
+                "warehouse_id": PANCAKE_WAREHOUSE_ID,
+            }
+        ],
     }
 
     products = [{"product": test_product}]
