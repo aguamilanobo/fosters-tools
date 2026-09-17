@@ -57,6 +57,7 @@ def root():
                 <div class="card"><h3>Shipping Preparation</h3><span class="endpoint">POST /prepare-shipping</span><p>Determines the correct shipping flow.</p></div>
                 <div class="card"><h3>Product Catalog</h3><span class="endpoint">GET /catalog</span><p>Returns current Henley colors, sizes and images.</p></div>
                 <div class="card"><h3>Pancake Product Sync</h3><span class="endpoint">GET /products?page=1&pageSize=50</span><p>Paginated product feed for Pancake.</p></div>
+                <div class="card"><h3>Pancake Sync Test</h3><span class="endpoint">GET /products-test?page=1&pageSize=50</span><p>Minimal one-product feed for Pancake synchronization testing.</p></div>
                 <div class="card"><h3>Discount Engine</h3><span class="endpoint">GET /discount</span><p>Returns official quantity discounts when explicitly requested.</p></div>
                 <div class="card"><h3>Lead Classification</h3><span class="endpoint">POST /classify-lead</span><p>Classifies commercial intent and human handoff.</p></div>
                 <div class="card"><h3>Next Action Decision</h3><span class="endpoint">POST /decide-next-action</span><p>Chooses the next commercial action using deterministic priorities.</p></div>
@@ -281,6 +282,54 @@ def get_products(
         "variations_warehouses": [],
     }
     products = [{"product": product}]
+    start = (page - 1) * pageSize
+    end = start + pageSize
+    return {"data": products[start:end], "total": len(products)}
+
+
+@app.get("/products-test")
+def get_products_test(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=100),
+):
+    test_product = {
+        "name": "Henley Fosters Test",
+        "id": "fosters-henley-test",
+        "permalink": "https://fosters-tools.onrender.com/catalog",
+        "product_attributes": [
+            {
+                "name": "Color",
+                "values": ["Negro"],
+                "id": "",
+            },
+            {
+                "name": "Size",
+                "values": ["M"],
+                "id": "",
+            },
+        ],
+        "variations": [
+            {
+                "api_variation_id": "henley-test-negro-m",
+                "fields": [
+                    {"name": "Color", "value": "Negro", "id": ""},
+                    {"name": "Size", "value": "M", "id": ""},
+                ],
+                "images": [],
+                "last_imported_price": 300,
+                "retail_price": 300,
+                "weight": 0,
+                "barcode": "HENLEY-TEST-NEGRO-M",
+                "custom_id": "henley-test-negro-m",
+                "permalink": "https://fosters-tools.onrender.com/catalog?color=negro",
+            }
+        ],
+        "weight": 1,
+        "custom_id": "FOSTERS-HENLEY-TEST",
+        "variations_warehouses": [],
+    }
+
+    products = [{"product": test_product}]
     start = (page - 1) * pageSize
     end = start + pageSize
     return {"data": products[start:end], "total": len(products)}
