@@ -2,6 +2,9 @@ from fastapi import FastAPI, Query, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional, List
+import os
+import json
+from urllib import request as urllib_request, error as urllib_error
 
 app = FastAPI(title="FOSTERS AI Tools")
 
@@ -60,7 +63,7 @@ def root():
                 <div class="card"><h3>Pancake Sync Test</h3><span class="endpoint">GET /products-test?page=1&pageSize=50</span><p>Minimal one-product feed with warehouse stock for Pancake synchronization testing.</p></div>
                 <div class="card"><h3>Discount Engine</h3><span class="endpoint">GET /discount</span><p>Returns official quantity discounts when explicitly requested.</p></div>
                 <div class="card"><h3>Lead Classification</h3><span class="endpoint">POST /classify-lead</span><p>Classifies commercial intent and human handoff.</p></div>
-                <div class="card"><h3>Next Action Decision</h3><span class="endpoint">POST /decide-next-action</span><p>Chooses the next commercial action using deterministic priorities.</p></div>
+                <div class="card"><h3>Next Action Decision</h3><span class="endpoint">POST /decide-next-action</span><p>Chooses the next commercial action using deterministic priorities.</p></div>\n                <div class="card"><h3>Telegram Handoff Alerts</h3><span class="endpoint">POST /notify-handoff</span><p>Sends internal Telegram notifications when a conversation is derived to a human.</p></div>
             </div>
             <div class="footer"><span>FOSTERS · Santa Cruz, Bolivia</span><a class="docs" href="/docs">API Documentation</a></div>
         </div>
@@ -331,6 +334,132 @@ def get_products_test(
     start = (page - 1) * pageSize
     end = start + pageSize
     return {"data": products[start:end], "total": len(products)}
+
+
+# -----------------------------------------------------------------------------
+# TELEGRAM HANDOFF NOTIFICATIONS
+# -----------------------------------------------------------------------------
+
+class HandoffNotifyRequest(BaseModel):
+    customer_name: Optional[str] = None
+    phone: Optional[str] = None
+    product: Optional[str] = "Henley"
+    color: Optional[str] = None
+    size: Optional[str] = None
+    quantity: Optional[int] = 1
+    city: Optional[str] = None
+    reason: Optional[str] = None
+    intent_level: Optional[str] = None
+    summary: Optional[str] = None
+    conversation_url: Optional[str] = None
+
+
+def send_telegram_message(text: str, conversation_url: Optional[str] = None):
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
+    if not bot_token or not chat_id:
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram no está configurado. Faltan TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID."
+        )
+
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+
+    if conversation_url and conversation_url.startswith(("http://", "https://")):
+        payload["reply_markup"] = {
+            "inline_keyboard": [[
+                {"text": "Abrir conversación", "url": conversation_url}
+            ]]
+        }
+
+    req = urllib_request.Request(
+        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib_request.urlopen(req, timeout=10) as response:
+            telegram_response = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise HTTPException(status_code=502, detail=f"Telegram API error: {detail}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"No se pudo enviar a Telegram: {exc}")
+
+    if not telegram_response.get("ok"):
+        raise HTTPException(status_code=502, detail="Telegram rechazó la notificación.")
+
+    return telegram_response
+
+
+@app.post("/notify-handoff")
+def notify_handoff(
+    data: HandoffNotifyRequest,
+    authorization: str | None = Header(None),
+):
+    if authorization != f"Bearer {API_TOKEN}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    quantity = data.quantity if data.quantity and data.quantity > 0 else 1
+
+    order_parts = []
+    if data.product:
+        order_parts.append(data.product)
+    if data.color:
+        order_parts.append(data.color)
+    if data.size:
+        order_parts.append(data.size)
+
+    order_text = " ".join(order_parts).strip() or "Sin producto definido"
+    if quantity > 1:
+        order_text = f"{quantity} x {order_text}"
+    else:
+        order_text = f"1 x {order_text}"
+
+    reason_labels = {
+        "payment_request": "Pidió QR / pago",
+        "human_request": "Solicitó atención humana",
+        "complaint": "Reclamo",
+        "santa_cruz_shipping_ready": "Datos de entrega completos",
+        "other_department_shipping_ready": "Datos de envío completos",
+    }
+    reason_text = reason_labels.get(data.reason or "", data.reason or "Derivación solicitada")
+
+    lines = [
+        "NUEVA DERIVACIÓN — FOSTERS",
+        "",
+        f"Cliente: {data.customer_name or 'Sin nombre'}",
+        f"Pedido: {order_text}",
+        f"Ciudad: {data.city or 'Sin definir'}",
+        f"Motivo: {reason_text}",
+        f"Intención: {data.intent_level or 'Sin clasificar'}",
+    ]
+
+    if data.phone:
+        lines.append(f"Teléfono: {data.phone}")
+
+    if data.summary:
+        lines.extend(["", f"Resumen: {data.summary}"])
+
+    telegram_response = send_telegram_message(
+        "\n".join(lines),
+        data.conversation_url,
+    )
+
+    result = telegram_response.get("result", {})
+    return {
+        "sent": True,
+        "channel": "telegram",
+        "message_id": result.get("message_id"),
+        "chat_id": result.get("chat", {}).get("id"),
+    }
 
 
 # -----------------------------------------------------------------------------
