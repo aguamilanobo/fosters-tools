@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Query, Header, HTTPException
+from fastapi import FastAPI, Query, Header, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional, List
@@ -9,6 +10,7 @@ from urllib import request as urllib_request, error as urllib_error
 app = FastAPI(title="FOSTERS AI Tools")
 
 API_TOKEN = "fosters_bot_2026"
+telegram_bearer = HTTPBearer(auto_error=False)
 
 
 # -----------------------------------------------------------------------------
@@ -402,9 +404,9 @@ def send_telegram_message(text: str, conversation_url: Optional[str] = None):
 @app.post("/notify-handoff")
 def notify_handoff(
     data: HandoffNotifyRequest,
-    authorization: str | None = Header(None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(telegram_bearer),
 ):
-    if authorization != f"Bearer {API_TOKEN}":
+    if not credentials or credentials.scheme.lower() != "bearer" or credentials.credentials != API_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     quantity = data.quantity if data.quantity and data.quantity > 0 else 1
