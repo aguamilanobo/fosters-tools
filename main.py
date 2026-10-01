@@ -694,26 +694,35 @@ class AguaOrderItem(BaseModel):
 
 
 class AguaOrderRequest(BaseModel):
-    items: List[AguaOrderItem] = []
+    product: Optional[str] = None
+    color: Optional[str] = None
+    size: Optional[str] = None
+    quantity: int = 1
     city: Optional[str] = None
+    items: Optional[List[AguaOrderItem]] = None
 
 
 @app.post("/agua/prepare-order")
 def prepare_agua_order(data: AguaOrderRequest):
-    if not data.items:
+    raw_items = data.items or []
+    if not raw_items and data.product:
+        raw_items = [AguaOrderItem(product=data.product, color=data.color, size=data.size, quantity=data.quantity or 1)]
+
+    if not raw_items:
         return {
             "ready_to_order": False,
-            "missing_fields": ["items"],
+            "missing_fields": ["product"],
             "next_step": "ask_product",
             "items": [],
             "total_bs": 0,
+            "city": data.city,
         }
 
     normalized_items = []
     missing_fields = []
     total_bs = 0
 
-    for idx, raw in enumerate(data.items):
+    for idx, raw in enumerate(raw_items):
         product = normalize_agua_product(raw.product)
         qty = raw.quantity if raw.quantity and raw.quantity > 0 else 1
 
