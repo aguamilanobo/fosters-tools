@@ -1006,6 +1006,91 @@ def decide_agua_next_action(data: AguaNextActionRequest):
 
 
 # -----------------------------------------------------------------------------
+# AGUAMILANO SALES SKILLS
+# -----------------------------------------------------------------------------
+
+class AguaLeadClassifyRequest(BaseModel):
+    has_replied: bool = False
+    has_product: bool = False
+    has_color: bool = False
+    has_size: bool = False
+    wants_to_buy: bool = False
+    asks_for_payment: bool = False
+    asks_for_human: bool = False
+    has_complaint: bool = False
+
+@app.post("/agua/classify-lead")
+def classify_agua_lead(data: AguaLeadClassifyRequest):
+    if data.asks_for_payment or data.asks_for_human or data.has_complaint:
+        return {"stage":"handoff","intent_level":"high","sales_mode":"stop_ai","should_handoff":True}
+    if data.wants_to_buy and data.has_product and data.has_color and data.has_size:
+        return {"stage":"ready_to_buy","intent_level":"high","sales_mode":"conversion","should_handoff":False}
+    if data.wants_to_buy or (data.has_product and (data.has_color or data.has_size)):
+        return {"stage":"high_intent","intent_level":"high","sales_mode":"concise_conversion","should_handoff":False}
+    if data.has_product:
+        return {"stage":"choosing","intent_level":"medium","sales_mode":"advisory","should_handoff":False}
+    if data.has_replied:
+        return {"stage":"interested","intent_level":"low","sales_mode":"informative","should_handoff":False}
+    return {"stage":"browsing","intent_level":"low","sales_mode":"informative","should_handoff":False}
+
+class AguaSalesAngleRequest(BaseModel):
+    occasion: Optional[str] = None
+    preferred_color: Optional[str] = None
+    wants_full_set: bool = False
+    values_freshness: bool = False
+    values_comfort: bool = False
+    values_easy_to_combine: bool = False
+    values_elegance: bool = False
+    wants_daily_use: bool = False
+
+@app.post("/agua/decide-sales-angle")
+def decide_agua_sales_angle(data: AguaSalesAngleRequest):
+    occasion = (data.occasion or "").lower()
+    if data.wants_full_set:
+        angle, product, hint = "complete_look", "conjunto", "Si querés algo ya resuelto, la camisa con el short del mismo color queda muy bien."
+    elif data.values_freshness or any(x in occasion for x in ["calor","verano","día","dia"]):
+        angle, product, hint = "freshness", "camisa", "Para calor, la camisa de lino es una opción fresca y fácil de usar."
+    elif data.values_comfort:
+        angle, product, hint = "comfort", "camisa", "La idea es que te veas arreglado sin sentirte demasiado vestido."
+    elif data.values_elegance or any(x in occasion for x in ["cita","salir","cena","reunión","reunion"]):
+        angle, product, hint = "simple_elegance", "camisa", "Para ese plan, la camisa queda arreglada sin verse demasiado formal."
+    else:
+        angle, product, hint = "easy_to_combine", "camisa", "Es una prenda fácil de combinar y de usar seguido."
+    color = None
+    if data.preferred_color and data.preferred_color.lower() in ["perla","azul"]:
+        color = data.preferred_color.capitalize()
+    elif data.values_easy_to_combine or data.wants_daily_use:
+        color = "Perla"
+    elif data.values_elegance:
+        color = "Azul"
+    return {"angle":angle,"recommended_product":product,"recommended_color":color,"response_hint":hint,"stock_must_be_checked":True}
+
+class AguaObjectionRequest(BaseModel):
+    objection_type: str
+    product: Optional[str] = None
+    city_known: bool = False
+
+@app.post("/agua/handle-objection")
+def handle_agua_objection(data: AguaObjectionRequest):
+    kind = (data.objection_type or "").strip().lower()
+    if kind in ["caro","precio","price"]:
+        return {"strategy":"reinforce_value_without_discount","should_handoff":False,"response_hint":"Entiendo querido. La idea es que sea una prenda versátil, cómoda y fácil de combinar."}
+    if kind in ["pensar","lo pienso","think"]:
+        return {"strategy":"no_pressure","should_handoff":False,"response_hint":"Dale querido, cualquier duda con color o talle me escribís."}
+    if kind == "color":
+        return {"strategy":"guide_choice","should_handoff":False,"response_hint":"Si querés algo más fácil de combinar, Perla; si buscás más presencia, Azul."}
+    if kind in ["talle","talla","size"]:
+        if normalize_agua_product(data.product) == "short":
+            return {"strategy":"ask_usual_short_size","should_handoff":False,"response_hint":"¿Qué talle de short usás habitualmente?"}
+        return {"strategy":"use_shirt_size_flow","should_handoff":False,"response_hint":"Pasame tu altura y peso y te recomiendo el talle."}
+    if kind in ["stock","disponibilidad","availability"]:
+        return {"strategy":"check_pos_stock","should_handoff":False,"response_hint":"Confirmo esa variante y te digo."}
+    if kind in ["envio","envío","shipping"]:
+        hint = "Perfecto querido, te indico cómo seguimos con el envío." if data.city_known else "Sí querido, hacemos envíos. ¿De qué ciudad sos?"
+        return {"strategy":"ask_city_if_missing","should_handoff":False,"response_hint":hint}
+    return {"strategy":"brief_answer_or_handoff_if_uncertain","should_handoff":False,"response_hint":"Responder breve con información confirmada; si no puede confirmarse, derivar."}
+
+# -----------------------------------------------------------------------------
 # DISCOUNTS
 # -----------------------------------------------------------------------------
 
