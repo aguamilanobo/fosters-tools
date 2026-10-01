@@ -7,7 +7,7 @@ import os
 import json
 from urllib import request as urllib_request, error as urllib_error
 
-app = FastAPI(title="FOSTERS AI Tools")
+app = FastAPI(title="FOSTERS + aguaMILANO AI Tools")
 
 API_TOKEN = "fosters_bot_2026"
 telegram_bearer = HTTPBearer(auto_error=False)
@@ -25,7 +25,7 @@ def root():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>FOSTERS AI Tools</title>
+        <title>FOSTERS + aguaMILANO AI Tools</title>
         <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
             body { background:#0a0a0a; color:#f5f5f0; font-family:Arial,Helvetica,sans-serif; min-height:100vh; }
@@ -52,7 +52,7 @@ def root():
         <div class="container">
             <div class="header">
                 <div class="brand">FOSTERS</div>
-                <div class="subtitle">AI Tools Infrastructure</div>
+                <div class="subtitle">Multi-brand AI Tools Infrastructure</div>
                 <div class="status"><span class="dot"></span>System operational</div>
             </div>
             <div class="section-title">Active Skills & Integrations</div>
@@ -66,6 +66,12 @@ def root():
                 <div class="card"><h3>Discount Engine</h3><span class="endpoint">GET /discount</span><p>Returns official quantity discounts when explicitly requested.</p></div>
                 <div class="card"><h3>Lead Classification</h3><span class="endpoint">POST /classify-lead</span><p>Classifies commercial intent and human handoff.</p></div>
                 <div class="card"><h3>Next Action Decision</h3><span class="endpoint">POST /decide-next-action</span><p>Chooses the next commercial action using deterministic priorities.</p></div>\n                <div class="card"><h3>Telegram Handoff Alerts</h3><span class="endpoint">POST /notify-handoff</span><p>Sends internal Telegram notifications when a conversation is derived to a human.</p></div>
+                <div class="card"><h3>aguaMILANO Catalog</h3><span class="endpoint">GET /agua/catalog</span><p>Returns the current aguaMILANO catalog, prices, colors and product status.</p></div>
+                <div class="card"><h3>aguaMILANO Shirt Size</h3><span class="endpoint">GET /agua/recommend-shirt-size</span><p>Recommends shirt size using height, weight and the real garment measurements.</p></div>
+                <div class="card"><h3>aguaMILANO Stock</h3><span class="endpoint">POST /agua/check-stock</span><p>Stock-check contract prepared for Pancake POS integration.</p></div>
+                <div class="card"><h3>aguaMILANO Order</h3><span class="endpoint">POST /agua/prepare-order</span><p>Structures shirts, shorts, matching sets and future espadrille orders.</p></div>
+                <div class="card"><h3>aguaMILANO Shipping</h3><span class="endpoint">POST /agua/prepare-shipping</span><p>Determines Santa Cruz vs national shipping flow.</p></div>
+                <div class="card"><h3>aguaMILANO Orchestrator</h3><span class="endpoint">POST /agua/decide-next-action</span><p>Chooses the next commercial action for the aguaMILANO agent.</p></div>
             </div>
             <div class="footer"><span>FOSTERS · Santa Cruz, Bolivia</span><a class="docs" href="/docs">API Documentation</a></div>
         </div>
@@ -461,6 +467,532 @@ def notify_handoff(
         "channel": "telegram",
         "message_id": result.get("message_id"),
         "chat_id": result.get("chat", {}).get("id"),
+    }
+
+
+# -----------------------------------------------------------------------------
+# aguaMILANO — INITIAL SKILLS
+# -----------------------------------------------------------------------------
+
+AGUA_CAMISA_PRICE_BS = 350
+AGUA_SHORT_PRICE_BS = 330
+AGUA_ALPARGATA_PRICE_BS = 370
+
+AGUA_SHIRT_MEASUREMENTS = {
+    "M": {"width_cm": 55, "length_cm": 72},
+    "L": {"width_cm": 60, "length_cm": 75},
+    "XL": {"width_cm": 65, "length_cm": 77},
+}
+
+AGUA_CATALOG = {
+    "camisa": {
+        "name": "Camisa manga corta de lino",
+        "price_bs": AGUA_CAMISA_PRICE_BS,
+        "status": "active",
+        "colors": ["Perla", "Azul"],
+        "sizes": ["M", "L", "XL"],
+        "measurements": AGUA_SHIRT_MEASUREMENTS,
+    },
+    "short": {
+        "name": "Short de lino",
+        "price_bs": AGUA_SHORT_PRICE_BS,
+        "status": "active",
+        "colors": ["Perla", "Azul"],
+        "sizes": [],
+        "measurements": None,
+        "note": "Tabla de medidas pendiente. No recomendar talle automáticamente todavía.",
+    },
+    "alpargata": {
+        "name": "Alpargatas",
+        "price_bs": AGUA_ALPARGATA_PRICE_BS,
+        "status": "coming_soon",
+        "colors": [],
+        "sizes": ["40", "41", "42"],
+        "measurements": None,
+        "note": "Próximo ingreso desde Argentina. No ofrecer como disponible hasta confirmar stock.",
+    },
+}
+
+AGUA_PRODUCT_ALIASES = {
+    "camisa": "camisa",
+    "camisa lino": "camisa",
+    "camisa de lino": "camisa",
+    "manga corta": "camisa",
+    "short": "short",
+    "shorts": "short",
+    "short lino": "short",
+    "short de lino": "short",
+    "alpargata": "alpargata",
+    "alpargatas": "alpargata",
+    "conjunto": "conjunto",
+    "set": "conjunto",
+}
+
+
+def normalize_agua_product(product: Optional[str]) -> Optional[str]:
+    if not product:
+        return None
+    key = product.strip().lower()
+    return AGUA_PRODUCT_ALIASES.get(key, key)
+
+
+@app.get("/agua/catalog")
+def get_agua_catalog(
+    product: Optional[str] = None,
+    color: Optional[str] = None,
+):
+    normalized = normalize_agua_product(product)
+
+    if normalized == "conjunto":
+        return {
+            "found": True,
+            "product": "Conjunto camisa + short de lino",
+            "status": "active",
+            "price_bs": AGUA_CAMISA_PRICE_BS + AGUA_SHORT_PRICE_BS,
+            "items": ["camisa", "short"],
+            "colors": ["Perla", "Azul"],
+            "note": "El conjunto son dos prendas independientes. El stock debe verificarse por cada prenda y variante.",
+        }
+
+    if normalized:
+        item = AGUA_CATALOG.get(normalized)
+        if not item:
+            return {
+                "found": False,
+                "product": product,
+                "available_products": [x["name"] for x in AGUA_CATALOG.values()],
+            }
+
+        if color:
+            available = any(c.lower() == color.strip().lower() for c in item["colors"])
+            return {
+                "found": available,
+                "product_key": normalized,
+                "product": item["name"],
+                "color": color,
+                "available_colors": item["colors"],
+                "price_bs": item["price_bs"],
+                "status": item["status"],
+                "sizes": item["sizes"],
+                "measurements": item["measurements"],
+                "note": item.get("note"),
+            }
+
+        return {
+            "found": True,
+            "product_key": normalized,
+            **item,
+        }
+
+    return {
+        "found": True,
+        "brand": "aguaMILANO",
+        "products": [
+            {"product_key": key, **item}
+            for key, item in AGUA_CATALOG.items()
+        ],
+        "matching_set": {
+            "name": "Conjunto camisa + short de lino",
+            "price_bs": AGUA_CAMISA_PRICE_BS + AGUA_SHORT_PRICE_BS,
+            "colors": ["Perla", "Azul"],
+        },
+    }
+
+
+@app.get("/agua/recommend-shirt-size")
+def recommend_agua_shirt_size(
+    height_cm: float = Query(..., description="Altura del cliente en cm"),
+    weight_kg: float = Query(..., description="Peso del cliente en kg"),
+    usual_size: Optional[str] = Query(None, description="Talle habitual del cliente"),
+):
+    usual = usual_size.upper().strip() if usual_size else None
+
+    # Conservative initial heuristic until we accumulate real fit outcomes.
+    # The real garment dimensions are always returned so the agent can ground the recommendation.
+    if usual in AGUA_SHIRT_MEASUREMENTS:
+        recommended = usual
+        confidence = "high"
+        reason = "Se prioriza el talle habitual del cliente y se valida con las medidas reales de la prenda."
+    elif weight_kg <= 74:
+        recommended = "M"
+        confidence = "medium"
+        reason = "Estimación inicial por altura y peso; conviene usar las medidas reales como referencia."
+    elif weight_kg <= 90:
+        recommended = "L"
+        confidence = "medium"
+        reason = "Estimación inicial por altura y peso; conviene usar las medidas reales como referencia."
+    else:
+        recommended = "XL"
+        confidence = "medium"
+        reason = "Estimación inicial por altura y peso; conviene usar las medidas reales como referencia."
+
+    # Tall/slim edge case: prioritize garment length.
+    if recommended == "M" and height_cm >= 188 and weight_kg >= 70:
+        recommended = "L"
+        confidence = "medium"
+        reason = "Por la altura conviene subir a L para ganar largo, usando la tabla real como referencia."
+
+    measurements = AGUA_SHIRT_MEASUREMENTS[recommended]
+    return {
+        "recommended_size": recommended,
+        "confidence": confidence,
+        "reason": reason,
+        "height_cm": height_cm,
+        "weight_kg": weight_kg,
+        "usual_size": usual,
+        "garment_width_cm": measurements["width_cm"],
+        "garment_length_cm": measurements["length_cm"],
+        "measurement_source": "tabla_real_agua_milano",
+    }
+
+
+class AguaStockRequest(BaseModel):
+    product: Optional[str] = None
+    color: Optional[str] = None
+    size: Optional[str] = None
+    quantity: int = 1
+
+
+@app.post("/agua/check-stock")
+def check_agua_stock(data: AguaStockRequest):
+    product = normalize_agua_product(data.product)
+
+    if product == "alpargata":
+        return {
+            "connected": False,
+            "available": False,
+            "status": "coming_soon",
+            "product": "alpargata",
+            "message": "Las alpargatas todavía no deben ofrecerse como disponibles hasta confirmar el ingreso.",
+        }
+
+    if product not in ("camisa", "short"):
+        return {
+            "connected": False,
+            "available": None,
+            "status": "invalid_product",
+            "message": "Producto no reconocido para control de stock.",
+        }
+
+    return {
+        "connected": False,
+        "available": None,
+        "status": "pos_integration_pending",
+        "product": product,
+        "color": data.color,
+        "size": data.size,
+        "quantity": max(data.quantity, 1),
+        "message": "Contrato de stock listo. Falta conectar lectura de inventario del POS de Pancake antes de confirmar disponibilidad automáticamente.",
+    }
+
+
+class AguaOrderItem(BaseModel):
+    product: str
+    color: Optional[str] = None
+    size: Optional[str] = None
+    quantity: int = 1
+
+
+class AguaOrderRequest(BaseModel):
+    items: List[AguaOrderItem] = []
+    city: Optional[str] = None
+
+
+@app.post("/agua/prepare-order")
+def prepare_agua_order(data: AguaOrderRequest):
+    if not data.items:
+        return {
+            "ready_to_order": False,
+            "missing_fields": ["items"],
+            "next_step": "ask_product",
+            "items": [],
+            "total_bs": 0,
+        }
+
+    normalized_items = []
+    missing_fields = []
+    total_bs = 0
+
+    for idx, raw in enumerate(data.items):
+        product = normalize_agua_product(raw.product)
+        qty = raw.quantity if raw.quantity and raw.quantity > 0 else 1
+
+        if product == "conjunto":
+            # Expand a matching set into its two physical POS items.
+            for child in ("camisa", "short"):
+                item_data = AGUA_CATALOG[child]
+                normalized_items.append({
+                    "product": child,
+                    "product_name": item_data["name"],
+                    "color": raw.color,
+                    "size": raw.size,
+                    "quantity": qty,
+                    "unit_price_bs": item_data["price_bs"],
+                    "subtotal_bs": item_data["price_bs"] * qty,
+                    "stock_check_required": True,
+                })
+                total_bs += item_data["price_bs"] * qty
+                if not raw.color:
+                    missing_fields.append(f"items[{idx}].color")
+                if not raw.size:
+                    missing_fields.append(f"items[{idx}].size")
+            continue
+
+        item_data = AGUA_CATALOG.get(product or "")
+        if not item_data:
+            missing_fields.append(f"items[{idx}].product")
+            continue
+
+        if item_data["status"] != "active":
+            normalized_items.append({
+                "product": product,
+                "product_name": item_data["name"],
+                "status": item_data["status"],
+                "quantity": qty,
+            })
+            missing_fields.append(f"items[{idx}].availability")
+            continue
+
+        if not raw.color:
+            missing_fields.append(f"items[{idx}].color")
+        if not raw.size:
+            missing_fields.append(f"items[{idx}].size")
+
+        subtotal = item_data["price_bs"] * qty
+        total_bs += subtotal
+        normalized_items.append({
+            "product": product,
+            "product_name": item_data["name"],
+            "color": raw.color,
+            "size": raw.size,
+            "quantity": qty,
+            "unit_price_bs": item_data["price_bs"],
+            "subtotal_bs": subtotal,
+            "stock_check_required": True,
+        })
+
+    # Stock is intentionally required before an order can be considered final.
+    ready = len(missing_fields) == 0
+    next_step = "check_stock" if ready else "collect_missing_fields"
+
+    return {
+        "ready_to_order": ready,
+        "stock_check_required": ready,
+        "missing_fields": sorted(set(missing_fields)),
+        "next_step": next_step,
+        "items": normalized_items,
+        "total_bs": total_bs,
+        "city": data.city,
+    }
+
+
+class AguaShippingRequest(BaseModel):
+    city: Optional[str] = None
+    department: Optional[str] = None
+    order_confirmed: bool = False
+    location_shared: bool = False
+    full_name: Optional[str] = None
+    ci: Optional[str] = None
+
+
+@app.post("/agua/prepare-shipping")
+def prepare_agua_shipping(data: AguaShippingRequest):
+    destination = f"{data.city or ''} {data.department or ''}".strip().lower()
+    is_santa_cruz = "santa cruz" in destination or destination == "scz"
+
+    if not data.order_confirmed:
+        return {
+            "shipping_type": "not_ready",
+            "next_step": "wait_for_order_confirmation",
+            "missing_fields": [],
+            "handoff_required": False,
+        }
+
+    if not destination:
+        return {
+            "shipping_type": "unknown",
+            "next_step": "ask_destination",
+            "missing_fields": ["city_or_department"],
+            "handoff_required": False,
+        }
+
+    if is_santa_cruz:
+        if not data.location_shared:
+            return {
+                "shipping_type": "santa_cruz",
+                "next_step": "ask_location",
+                "missing_fields": ["location"],
+                "handoff_required": False,
+            }
+        return {
+            "shipping_type": "santa_cruz",
+            "next_step": "handoff_admin",
+            "missing_fields": [],
+            "handoff_required": True,
+        }
+
+    missing = []
+    if not data.full_name:
+        missing.append("full_name")
+    if not data.ci:
+        missing.append("ci")
+
+    if missing:
+        return {
+            "shipping_type": "other_department",
+            "next_step": "ask_full_name_and_ci",
+            "missing_fields": missing,
+            "handoff_required": False,
+        }
+
+    return {
+        "shipping_type": "other_department",
+        "next_step": "handoff_admin",
+        "missing_fields": [],
+        "handoff_required": True,
+    }
+
+
+class AguaNextActionRequest(BaseModel):
+    product: Optional[str] = None
+    color: Optional[str] = None
+    size: Optional[str] = None
+    quantity: int = 1
+    city: Optional[str] = None
+    department: Optional[str] = None
+    wants_to_buy: bool = False
+    asks_for_catalog: bool = False
+    asks_for_size_help: bool = False
+    asks_for_payment: bool = False
+    asks_for_human: bool = False
+    has_complaint: bool = False
+    stock_checked: bool = False
+    stock_available: Optional[bool] = None
+    location_shared: bool = False
+    full_name: Optional[str] = None
+    ci: Optional[str] = None
+
+
+@app.post("/agua/decide-next-action")
+def decide_agua_next_action(data: AguaNextActionRequest):
+    product = normalize_agua_product(data.product)
+
+    if data.asks_for_payment or data.asks_for_human or data.has_complaint:
+        reason = "payment_request" if data.asks_for_payment else "complaint" if data.has_complaint else "human_request"
+        return {
+            "next_action": "handoff",
+            "priority": "critical",
+            "should_handoff": True,
+            "reason": reason,
+            "missing_fields": [],
+        }
+
+    if data.asks_for_catalog:
+        return {
+            "next_action": "send_catalog",
+            "priority": "normal",
+            "should_handoff": False,
+            "reason": "catalog_requested",
+            "missing_fields": [],
+        }
+
+    if data.asks_for_size_help:
+        if product == "short":
+            return {
+                "next_action": "short_size_manual_help",
+                "priority": "high",
+                "should_handoff": True,
+                "reason": "short_measurements_pending",
+                "missing_fields": [],
+                "message_hint": "No recomendar talle de short automáticamente hasta cargar su tabla real.",
+            }
+        if product == "alpargata":
+            return {
+                "next_action": "ask_espadrille_size",
+                "priority": "normal",
+                "should_handoff": False,
+                "reason": "espadrille_sizes_are_numeric",
+                "missing_fields": ["size"],
+                "available_sizes": ["40", "41", "42"],
+            }
+        return {
+            "next_action": "recommend_shirt_size",
+            "priority": "high",
+            "should_handoff": False,
+            "reason": "shirt_size_help_requested",
+            "missing_fields": ["height_cm", "weight_kg"],
+        }
+
+    if data.wants_to_buy:
+        if not product:
+            return {"next_action":"ask_product","priority":"normal","should_handoff":False,"reason":"missing_product","missing_fields":["product"]}
+
+        if product == "alpargata":
+            return {
+                "next_action": "coming_soon",
+                "priority": "normal",
+                "should_handoff": False,
+                "reason": "espadrilles_not_yet_available",
+                "missing_fields": [],
+            }
+
+        if not data.color:
+            return {"next_action":"ask_color","priority":"normal","should_handoff":False,"reason":"missing_color","missing_fields":["color"]}
+        if not data.size:
+            return {"next_action":"ask_size","priority":"normal","should_handoff":False,"reason":"missing_size","missing_fields":["size"]}
+
+        if not data.stock_checked:
+            return {
+                "next_action": "check_stock",
+                "priority": "high",
+                "should_handoff": False,
+                "reason": "variant_defined_stock_not_checked",
+                "missing_fields": [],
+            }
+
+        if data.stock_available is False:
+            return {
+                "next_action": "offer_alternative",
+                "priority": "high",
+                "should_handoff": False,
+                "reason": "out_of_stock",
+                "missing_fields": [],
+            }
+
+        if not data.city and not data.department:
+            return {
+                "next_action": "ask_destination",
+                "priority": "high",
+                "should_handoff": False,
+                "reason": "order_ready_missing_destination",
+                "missing_fields": ["city_or_department"],
+            }
+
+        destination = f"{data.city or ''} {data.department or ''}".strip().lower()
+        is_santa_cruz = "santa cruz" in destination or destination == "scz"
+
+        if is_santa_cruz:
+            if not data.location_shared:
+                return {"next_action":"ask_location","priority":"high","should_handoff":False,"reason":"santa_cruz_missing_location","missing_fields":["location"]}
+            return {"next_action":"handoff","priority":"critical","should_handoff":True,"reason":"santa_cruz_shipping_ready","missing_fields":[]}
+
+        missing = []
+        if not data.full_name:
+            missing.append("full_name")
+        if not data.ci:
+            missing.append("ci")
+
+        if missing:
+            return {"next_action":"ask_name_ci","priority":"high","should_handoff":False,"reason":"other_department_missing_data","missing_fields":missing}
+
+        return {"next_action":"handoff","priority":"critical","should_handoff":True,"reason":"other_department_shipping_ready","missing_fields":[]}
+
+    return {
+        "next_action": "continue_sales",
+        "priority": "normal",
+        "should_handoff": False,
+        "reason": "no_critical_action",
+        "missing_fields": [],
     }
 
 
