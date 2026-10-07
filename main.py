@@ -5,12 +5,15 @@ from pydantic import BaseModel
 from typing import Optional, List
 import os
 import json
+import hashlib
+import time
 from urllib import request as urllib_request, error as urllib_error
 
 app = FastAPI(title="FOSTERS + aguaMILANO AI Tools")
 
 API_TOKEN = "fosters_bot_2026"
 telegram_bearer = HTTPBearer(auto_error=False)
+printer_notification_cache = {}
 
 
 # -----------------------------------------------------------------------------
@@ -288,13 +291,61 @@ def fosters_payment_summary(data: FostersPaymentSummaryRequest):
         lines.append(f"Transporte: {str(data.transport).strip()}")
 
     lines.append(str(data.phone).strip())
+    summary_message = "\n".join(lines)
+
+    printer_token = os.getenv("PRINTER_TELEGRAM_BOT_TOKEN")
+    printer_chat_id = os.getenv("PRINTER_TELEGRAM_CHAT_ID")
+    printer_sent = False
+    printer_duplicate = False
+    printer_error = None
+
+    if printer_token and printer_chat_id:
+        now = time.time()
+        dedupe_key = hashlib.sha256(summary_message.encode("utf-8")).hexdigest()
+        expired = [k for k, ts in printer_notification_cache.items() if now - ts > 900]
+        for k in expired:
+            printer_notification_cache.pop(k, None)
+
+        if dedupe_key in printer_notification_cache:
+            printer_duplicate = True
+        else:
+            payload = {
+                "chat_id": printer_chat_id,
+                "text": summary_message,
+                "disable_web_page_preview": True,
+                "reply_markup": {
+                    "inline_keyboard": [[
+                        {"text": "🖨 IMPRIMIR", "callback_data": "print_order"},
+                        {"text": "IGNORAR", "callback_data": "ignore_order"},
+                    ]]
+                },
+            }
+            req = urllib_request.Request(
+                f"https://api.telegram.org/bot{printer_token}/sendMessage",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib_request.urlopen(req, timeout=10) as response:
+                    telegram_response = json.loads(response.read().decode("utf-8"))
+                if telegram_response.get("ok"):
+                    printer_notification_cache[dedupe_key] = now
+                    printer_sent = True
+                else:
+                    printer_error = "Telegram rechazó la notificación."
+            except Exception as exc:
+                printer_error = str(exc)
 
     return {
         "ready_for_payment": True,
         "should_send_summary": True,
         "missing_fields": [],
-        "summary_message": "\n".join(lines),
+        "summary_message": summary_message,
         "payment_status": "pending",
+        "printer_notification_sent": printer_sent,
+        "printer_notification_duplicate": printer_duplicate,
+        "printer_notification_error": printer_error,
     }
 
 
