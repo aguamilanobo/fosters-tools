@@ -61,6 +61,7 @@ def root():
                 <div class="card"><h3>Order Preparation</h3><span class="endpoint">POST /prepare-order</span><p>Structures product, color, size and quantity before shipping.</p></div>
                 <div class="card"><h3>Shipping Preparation</h3><span class="endpoint">POST /prepare-shipping</span><p>Determines the correct shipping flow.</p></div>
                 <div class="card"><h3>Product Catalog</h3><span class="endpoint">GET /catalog</span><p>Returns current Henley colors, sizes and images.</p></div>
+                <div class="card"><h3>Fosters Payment Summary</h3><span class="endpoint">POST /fosters/payment-summary</span><p>Builds the final customer-facing order summary before payment.</p></div>
                 <div class="card"><h3>Pancake Product Sync</h3><span class="endpoint">GET /products?page=1&pageSize=50</span><p>Paginated product feed for Pancake.</p></div>
                 <div class="card"><h3>Pancake Sync Test</h3><span class="endpoint">GET /products-test?page=1&pageSize=50</span><p>Minimal one-product feed with warehouse stock for Pancake synchronization testing.</p></div>
                 <div class="card"><h3>Discount Engine</h3><span class="endpoint">GET /discount</span><p>Returns official quantity discounts when explicitly requested.</p></div>
@@ -228,6 +229,73 @@ def prepare_shipping(data: ShippingPrepRequest):
     if missing_fields:
         return {"shipping_type":"other_department","missing_fields":missing_fields,"next_step":"ask_full_name_and_ci","handoff_required":False,"message":"Pedir nombre completo y CI."}
     return {"shipping_type":"other_department","missing_fields":[],"next_step":"handoff_admin","handoff_required":True,"message":"Nombre completo y CI recibidos. Derivar a administrador."}
+
+
+# -----------------------------------------------------------------------------
+# FOSTERS PAYMENT SUMMARY
+# -----------------------------------------------------------------------------
+
+class FostersPaymentSummaryRequest(BaseModel):
+    items: Optional[str] = None
+    full_name: Optional[str] = None
+    ci: Optional[str] = None
+    department: Optional[str] = None
+    zone_or_city: Optional[str] = None
+    transport: Optional[str] = None
+    phone: Optional[str] = None
+
+
+@app.post("/fosters/payment-summary")
+def fosters_payment_summary(data: FostersPaymentSummaryRequest):
+    required = {
+        "items": data.items,
+        "full_name": data.full_name,
+        "ci": data.ci,
+        "department": data.department,
+        "phone": data.phone,
+    }
+    missing_fields = [
+        key for key, value in required.items()
+        if not value or not str(value).strip()
+    ]
+
+    if missing_fields:
+        return {
+            "ready_for_payment": False,
+            "should_send_summary": False,
+            "missing_fields": missing_fields,
+            "summary_message": None,
+            "payment_status": "not_ready",
+        }
+
+    items = str(data.items).strip()
+    if not items.lower().startswith("henley"):
+        items = f"Henley {items}"
+
+    destination = str(data.department).strip()
+    if data.zone_or_city and str(data.zone_or_city).strip():
+        zone = str(data.zone_or_city).strip()
+        destination = f"{destination} {zone}"
+
+    lines = [
+        "Pedido Confirmado:",
+        items,
+        f"{str(data.full_name).strip()} + CI {str(data.ci).strip()}",
+        destination,
+    ]
+
+    if data.transport and str(data.transport).strip():
+        lines.append(f"Transporte: {str(data.transport).strip()}")
+
+    lines.append(str(data.phone).strip())
+
+    return {
+        "ready_for_payment": True,
+        "should_send_summary": True,
+        "missing_fields": [],
+        "summary_message": "\n".join(lines),
+        "payment_status": "pending",
+    }
 
 
 # -----------------------------------------------------------------------------
