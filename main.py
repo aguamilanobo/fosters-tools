@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, Header, HTTPException, Depends
+from fastapi import FastAPI, Query, Header, HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -346,6 +346,40 @@ def fosters_payment_summary(data: FostersPaymentSummaryRequest):
         "printer_notification_sent": printer_sent,
         "printer_notification_duplicate": printer_duplicate,
         "printer_notification_error": printer_error,
+    }
+
+
+# -----------------------------------------------------------------------------
+# PANCAKE POS WEBHOOK - aguaMILANO (diagnostic capture)
+# -----------------------------------------------------------------------------
+
+@app.post("/webhooks/pancake/agua")
+async def pancake_agua_webhook(request: Request):
+    """
+    Receives Pancake POS webhook events for aguaMILANO.
+    Diagnostic mode only: logs the raw event and does not mutate stock/orders.
+    """
+    raw = await request.body()
+    content_type = request.headers.get("content-type", "")
+
+    try:
+        payload = json.loads(raw.decode("utf-8")) if raw else None
+    except Exception:
+        payload = raw.decode("utf-8", errors="replace")
+
+    print("\n[PANCAKE aguaMILANO WEBHOOK]")
+    print("content-type:", content_type)
+    print("headers:", {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in {"authorization", "cookie", "x-api-key"}
+    })
+    print("payload:", json.dumps(payload, ensure_ascii=False) if isinstance(payload, (dict, list)) else payload)
+    print("[/PANCAKE aguaMILANO WEBHOOK]\n")
+
+    return {
+        "ok": True,
+        "received": True,
+        "mode": "diagnostic",
     }
 
 
