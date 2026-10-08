@@ -15,6 +15,12 @@ API_TOKEN = "fosters_bot_2026"
 telegram_bearer = HTTPBearer(auto_error=False)
 printer_notification_cache = {}
 
+# aguaMILANO live stock cache populated by Pancake POS webhooks.
+# Source of truth remains Pancake; this cache only mirrors the latest events.
+agua_variant_meta = {}
+agua_stock_cache = {}
+agua_stock_updated_at = {}
+
 
 # -----------------------------------------------------------------------------
 # HOME DASHBOARD
@@ -353,33 +359,134 @@ def fosters_payment_summary(data: FostersPaymentSummaryRequest):
 # PANCAKE POS WEBHOOK - aguaMILANO (diagnostic capture)
 # -----------------------------------------------------------------------------
 
+def _agua_normalize_pos_product_name(name: Optional[str]) -> Optional[str]:
+    value = (name or "").strip().lower()
+    if "short" in value:
+        return "short"
+    if "camisa" in value:
+        return "camisa"
+    if "alpargat" in value:
+        return "alpargata"
+    return None
+
+
+def _agua_normalize_pos_color(value: Optional[str]) -> Optional[str]:
+    color = (value or "").strip().lower()
+    aliases = {
+        "navy": "Azul",
+        "azul": "Azul",
+        "azul marino": "Azul",
+        "perla": "Perla",
+        "blanco perla": "Perla",
+    }
+    return aliases.get(color, value.strip().title() if value else None)
+
+
+def _agua_extract_variant_fields(variation):
+    color = None
+    size = None
+    for field in variation.get("fields") or []:
+        name = str(field.get("name") or "").strip().lower()
+        value = str(field.get("value") or "").strip()
+        if name in ("color", "colour"):
+            color = _agua_normalize_pos_color(value)
+        elif name in ("talla", "talle", "size"):
+            size = value.upper()
+    return color, size
+
+
+def _agua_index_product_payload(payload):
+    product = _agua_normalize_pos_product_name(payload.get("name"))
+    if not product:
+        return 0
+
+    count = 0
+    for variation in payload.get("variations") or []:
+        variation_id = str(variation.get("id") or "").strip()
+        if not variation_id:
+            continue
+        color, size = _agua_extract_variant_fields(variation)
+        agua_variant_meta[variation_id] = {
+            "product": product,
+            "product_name": payload.get("name"),
+            "color": color,
+            "size": size,
+            "display_id": variation.get("display_id"),
+        }
+        count += 1
+    return count
+
+
 @app.post("/webhooks/pancake/agua")
 async def pancake_agua_webhook(request: Request):
     """
-    Receives Pancake POS webhook events for aguaMILANO.
-    Diagnostic mode only: logs the raw event and does not mutate stock/orders.
+    Mirrors Pancake POS product/variation inventory events into a live cache.
+    Pancake remains the source of truth; this endpoint never changes POS stock.
     """
     raw = await request.body()
-    content_type = request.headers.get("content-type", "")
-
     try:
         payload = json.loads(raw.decode("utf-8")) if raw else None
     except Exception:
         payload = raw.decode("utf-8", errors="replace")
 
-    print("\n[PANCAKE aguaMILANO WEBHOOK]")
-    print("content-type:", content_type)
-    print("headers:", {
-        k: v for k, v in request.headers.items()
-        if k.lower() not in {"authorization", "cookie", "x-api-key"}
-    })
-    print("payload:", json.dumps(payload, ensure_ascii=False) if isinstance(payload, (dict, list)) else payload)
-    print("[/PANCAKE aguaMILANO WEBHOOK]\n")
+    if not isinstance(payload, dict):
+        print("[PANCAKE aguaMILANO] payload no estructurado")
+        return {"ok": True, "received": True, "indexed": False}
 
+    event_type = str(payload.get("type") or "").strip().lower()
+
+    if event_type == "products":
+        indexed = _agua_index_product_payload(payload)
+        print(f"[PANCAKE aguaMILANO] Producto indexado: {payload.get('name')} | variantes={indexed}")
+        return {
+            "ok": True,
+            "received": True,
+            "event_type": "products",
+            "indexed_variations": indexed,
+        }
+
+    if event_type == "variations_warehouses":
+        variation_id = str(payload.get("variation_id") or "").strip()
+        warehouse_id = str(payload.get("warehouse_id") or "").strip()
+
+        quantity = payload.get("remain_quantity")
+        if payload.get("is_actual_remain_quantity") is True and payload.get("actual_remain_quantity") is not None:
+            quantity = payload.get("actual_remain_quantity")
+
+        try:
+            quantity = int(quantity)
+        except (TypeError, ValueError):
+            quantity = None
+
+        if variation_id and quantity is not None:
+            agua_stock_cache[variation_id] = {
+                "quantity": quantity,
+                "warehouse_id": warehouse_id,
+                "change_quantity": payload.get("change_quantity"),
+            }
+            agua_stock_updated_at[variation_id] = time.time()
+
+        meta = agua_variant_meta.get(variation_id, {})
+        print(
+            "[PANCAKE aguaMILANO] Stock: "
+            f"{meta.get('product_name') or variation_id} "
+            f"{meta.get('color') or ''} {meta.get('size') or ''} -> {quantity}"
+        )
+        return {
+            "ok": True,
+            "received": True,
+            "event_type": "variations_warehouses",
+            "variation_id": variation_id,
+            "quantity": quantity,
+            "known_variant": variation_id in agua_variant_meta,
+        }
+
+    print(f"[PANCAKE aguaMILANO] Evento recibido: {event_type or 'desconocido'}")
     return {
         "ok": True,
         "received": True,
-        "mode": "diagnostic",
+        "event_type": event_type or None,
+        "ignored_for_stock": True,
     }
 
 
@@ -809,10 +916,11 @@ class AguaStockRequest(BaseModel):
 @app.post("/agua/check-stock")
 def check_agua_stock(data: AguaStockRequest):
     product = normalize_agua_product(data.product)
+    requested_qty = max(data.quantity, 1)
 
     if product == "alpargata":
         return {
-            "connected": False,
+            "connected": True,
             "available": False,
             "status": "coming_soon",
             "product": "alpargata",
@@ -821,21 +929,82 @@ def check_agua_stock(data: AguaStockRequest):
 
     if product not in ("camisa", "short"):
         return {
-            "connected": False,
+            "connected": True,
             "available": None,
             "status": "invalid_product",
             "message": "Producto no reconocido para control de stock.",
         }
 
+    color = _agua_normalize_pos_color(data.color)
+    size = (data.size or "").strip().upper() or None
+
+    matches = []
+    for variation_id, meta in agua_variant_meta.items():
+        if meta.get("product") != product:
+            continue
+        if color and (meta.get("color") or "").lower() != color.lower():
+            continue
+        if size and (meta.get("size") or "").upper() != size:
+            continue
+        stock = agua_stock_cache.get(variation_id)
+        if stock is None:
+            continue
+        matches.append((variation_id, meta, stock))
+
+    if not matches:
+        return {
+            "connected": True,
+            "available": None,
+            "status": "stock_not_seen_yet",
+            "product": product,
+            "color": color,
+            "size": size,
+            "quantity_requested": requested_qty,
+            "message": "La variante todavía no tiene un evento de inventario cargado en la caché. Confirmar en Pancake antes de prometer stock.",
+        }
+
+    total_available = sum(max(0, int(stock["quantity"])) for _, _, stock in matches)
+    available = total_available >= requested_qty
+    first_id, first_meta, first_stock = matches[0]
+
     return {
-        "connected": False,
-        "available": None,
-        "status": "pos_integration_pending",
+        "connected": True,
+        "available": available,
+        "status": "in_stock" if available else "out_of_stock",
         "product": product,
-        "color": data.color,
-        "size": data.size,
-        "quantity": max(data.quantity, 1),
-        "message": "Contrato de stock listo. Falta conectar lectura de inventario del POS de Pancake antes de confirmar disponibilidad automáticamente.",
+        "product_name": first_meta.get("product_name"),
+        "color": color,
+        "size": size,
+        "quantity_requested": requested_qty,
+        "stock": total_available,
+        "variation_id": first_id if len(matches) == 1 else None,
+        "warehouse_id": first_stock.get("warehouse_id") if len(matches) == 1 else None,
+        "source": "pancake_webhook_live_cache",
+        "message": (
+            f"Stock confirmado: {total_available} unidad(es)."
+            if available
+            else f"Stock insuficiente: quedan {total_available} unidad(es)."
+        ),
+    }
+
+
+@app.get("/agua/stock-snapshot")
+def agua_stock_snapshot():
+    rows = []
+    for variation_id, meta in agua_variant_meta.items():
+        stock = agua_stock_cache.get(variation_id)
+        rows.append({
+            "variation_id": variation_id,
+            **meta,
+            "stock": stock.get("quantity") if stock else None,
+            "warehouse_id": stock.get("warehouse_id") if stock else None,
+            "updated_at_epoch": agua_stock_updated_at.get(variation_id),
+        })
+    return {
+        "source": "pancake_webhook_live_cache",
+        "known_variations": len(agua_variant_meta),
+        "stocked_variations": len(agua_stock_cache),
+        "items": rows,
     }
 
 
