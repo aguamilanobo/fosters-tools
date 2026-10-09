@@ -275,7 +275,7 @@ def dashboard():
     <title>Fosters Dispatch</title><script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>body{background:#0b0b0b;color:#f3f1ea;font:15px Arial;margin:0}.wrap{max-width:760px;margin:auto;padding:22px}h1{font:24px Georgia;letter-spacing:2px}.card{background:#191919;border:1px solid #333;border-radius:14px;padding:18px;margin:12px 0}input{background:#111;color:white;border:1px solid #555;border-radius:6px;padding:10px;width:100%;box-sizing:border-box;margin:4px 0 12px}button{background:#f0eede;color:#111;border:0;border-radius:8px;padding:11px 15px;font-weight:bold}.muted{color:#aaa}.alert{color:#edbe75}.err{color:#fa9999}small{color:#aaa}</style></head>
     <body><div class="wrap"><h1>FOSTERS DISPATCH</h1><p class="alert">Modo seguro · revisión manual · envío WhatsApp todavía deshabilitado</p>
-    <div id="list">Cargando tickets…</div><p id="msg"></p></div>
+    <button onclick="checkPancake()">Comprobar conexión Pancake</button><p id="pancakeResult" class="muted"></p><div id="list">Cargando tickets…</div><p id="msg"></p></div>
     <script>
     const tg=window.Telegram&&Telegram.WebApp;if(tg){tg.ready();tg.expand()}
     const auth=tg?tg.initData:'';
@@ -283,6 +283,7 @@ def dashboard():
     async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Init-Data':auth},body:JSON.stringify(body||{})});const j=await r.json();if(!r.ok)throw Error(j.detail||'Error');return j}
     async function load(){try{const res=await api('/dispatch/api/list');document.getElementById('list').innerHTML=res.tickets.map(t=>{const x=Object.assign({},t.extracted,t.verified);return '<div class="card"><b>#'+t.id+' · '+esc(t.status)+'</b><p class="muted">Ticket recibido '+new Date(t.created_at*1000).toLocaleString()+'</p>'+['recipient_name','phone','destination','carrier','tracking_number','matched_order'].map(k=>'<label><small>'+k+'</small><input data-id="'+t.id+'" data-field="'+k+'" value="'+esc(k==='matched_order'?t.matched_order:x[k])+'"></label>').join('')+'<button onclick="approve('+t.id+')">Confirmar asociación (NO envía)</button></div>'}).join('')||'<p>No hay tickets. Enviá fotos al bot.</p>'}catch(e){document.getElementById('msg').textContent=e.message}}
     async function approve(id){const p={};document.querySelectorAll('[data-id="'+id+'"]').forEach(el=>p[el.dataset.field]=el.value);try{await api('/dispatch/api/review/'+id,p);document.getElementById('msg').textContent='Asociación guardada. No se envió ningún mensaje.';load()}catch(e){document.getElementById('msg').textContent=e.message}}
+    async function checkPancake(){const el=document.getElementById('pancakeResult');el.textContent='Consultando Pancake (solo lectura)…';try{const d=await api('/dispatch/api/pancake/check');el.textContent=d.connected?'Conexión correcta. Conversaciones en muestra: '+d.conversations_in_sample:'Conexión pendiente: '+(d.reason||d.http_status||'respuesta inesperada')+' / HTTP '+(d.http_status||'?')}catch(e){el.textContent='Error: '+e.message}}
     load();setInterval(load,20000);
     </script></body></html>"""
 
@@ -350,3 +351,37 @@ async def dispatch_suggestions(ticket_id:int, request:Request):
     results.sort(key=lambda x:x["score"],reverse=True)
     return {"candidates":results[:10],"automatic_send":False,
        "note":"Coincidencias orientativas, requieren revisión; datos importados manualmente."}
+
+
+@router.post("/dispatch/api/pancake/check")
+async def dispatch_pancake_check(request:Request):
+    """Read-only API connection test, no customer data or credentials exposed."""
+    authorized(request)
+    token=os.getenv("PANCAKE_API_TOKEN","")
+    page=os.getenv("DISPATCH_PANCAKE_PAGE_ID","")
+    if not token or not page:
+        return {"connected":False,"reason":"missing_configuration","token_present":bool(token),"page_present":bool(page)}
+    if not re.fullmatch(r"[A-Za-z0-9_-]{5,100}",page):
+        return {"connected":False,"reason":"invalid_page_identifier"}
+    endpoint="https://pages.fm/api/public_api/v2/pages/"+urlparse.quote(page,safe="")+"/conversations"
+    url=endpoint+"?"+urlparse.urlencode({"page_access_token":token})
+    req=urlreq.Request(url,headers={"Accept":"application/json","User-Agent":"FostersDispatch/0.1"},method="GET")
+    try:
+        with urlreq.urlopen(req,timeout=20) as response:
+            raw=response.read(512*1024)
+            status=response.status
+        body=json.loads(raw)
+        conversations=body.get("conversations") if isinstance(body,dict) else None
+        return {"connected":status==200 and isinstance(conversations,list),
+                "http_status":status,
+                "conversations_in_sample":len(conversations) if isinstance(conversations,list) else None,
+                "response_keys":list(body.keys())[:15] if isinstance(body,dict) else [],
+                "note":"Solo lectura. No se muestran ni guardan datos de clientes."}
+    except urlreq.HTTPError as exc:
+        return {"connected":False,"http_status":exc.code,
+                "reason":"permission_or_page_error" if exc.code in (401,403,404) else "pancake_http_error",
+                "note":"Verificar tipo de token (page access token) e identificador de página. No se envió nada."}
+    except Exception as exc:
+        print("[DISPATCH] Pancake read-only diagnostic failed:",type(exc).__name__)
+        return {"connected":False,"reason":"network_or_response_error",
+                "note":"Revisar Render Logs. No se envió nada."}
