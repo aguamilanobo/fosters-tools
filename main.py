@@ -13,6 +13,9 @@ from urllib import request as urllib_request, error as urllib_error, parse as ur
 
 app = FastAPI(title="FOSTERS + aguaMILANO AI Tools")
 
+from dispatch import router as dispatch_router
+app.include_router(dispatch_router)
+
 API_TOKEN = "fosters_bot_2026"
 telegram_bearer = HTTPBearer(auto_error=False)
 printer_notification_cache = {}
