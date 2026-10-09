@@ -283,7 +283,7 @@ def dashboard():
     async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Init-Data':auth},body:JSON.stringify(body||{})});const j=await r.json();if(!r.ok)throw Error(j.detail||'Error');return j}
     async function load(){try{const res=await api('/dispatch/api/list');document.getElementById('list').innerHTML=res.tickets.map(t=>{const x=Object.assign({},t.extracted,t.verified);return '<div class="card"><b>#'+t.id+' · '+esc(t.status)+'</b><p class="muted">Ticket recibido '+new Date(t.created_at*1000).toLocaleString()+'</p>'+['recipient_name','phone','destination','carrier','tracking_number','matched_order'].map(k=>'<label><small>'+k+'</small><input data-id="'+t.id+'" data-field="'+k+'" value="'+esc(k==='matched_order'?t.matched_order:x[k])+'"></label>').join('')+'<button onclick="approve('+t.id+')">Confirmar asociación (NO envía)</button></div>'}).join('')||'<p>No hay tickets. Enviá fotos al bot.</p>'}catch(e){document.getElementById('msg').textContent=e.message}}
     async function approve(id){const p={};document.querySelectorAll('[data-id="'+id+'"]').forEach(el=>p[el.dataset.field]=el.value);try{await api('/dispatch/api/review/'+id,p);document.getElementById('msg').textContent='Asociación guardada. No se envió ningún mensaje.';load()}catch(e){document.getElementById('msg').textContent=e.message}}
-    async function checkPancake(){const el=document.getElementById('pancakeResult');el.textContent='Consultando Pancake (solo lectura)…';try{const d=await api('/dispatch/api/pancake/check');el.textContent=d.connected?'Conexión correcta. Conversaciones en muestra: '+d.conversations_in_sample:'HTTP '+(d.http_status||'?')+' · Estructura: '+(d.response_type||'?')+' · Claves: '+(d.response_keys||[]).join(', ')+' · data: '+(d.data_type||'?')+' · success: '+String(d.api_success)}catch(e){el.textContent='Error: '+e.message}}
+    async function checkPancake(){const el=document.getElementById('pancakeResult');el.textContent='Consultando Pancake (solo lectura)…';try{const d=await api('/dispatch/api/pancake/check');el.textContent=d.connected?'Conexión correcta. Conversaciones en muestra: '+d.conversations_in_sample:'HTTP '+(d.http_status||'?')+' · Estructura: '+(d.response_type||'?')+' · Claves: '+(d.response_keys||[]).join(', ')+' · data: '+(d.data_type||'?')+' · success: '+String(d.api_success)+' · error_code: '+(d.api_error_code||'no disponible')}catch(e){el.textContent='Error: '+e.message}}
     load();setInterval(load,20000);
     </script></body></html>"""
 
@@ -378,6 +378,8 @@ async def dispatch_pancake_check(request:Request):
                 "response_keys":list(body.keys())[:15] if isinstance(body,dict) else [],
                 "response_type":type(body).__name__,
                 "api_success":body.get('success') if isinstance(body,dict) and isinstance(body.get('success'),bool) else None,
+                "api_error_code":str(body.get("error_code"))[:60] if isinstance(body,dict) and body.get("success") is False else None,
+                "reason":"pancake_rejected_request" if isinstance(body,dict) and body.get("success") is False else None,
                 "data_type":type(body.get('data')).__name__ if isinstance(body,dict) and 'data' in body else None,
                 "note":"Solo lectura. No se muestran ni guardan datos de clientes."}
     except urlreq.HTTPError as exc:
