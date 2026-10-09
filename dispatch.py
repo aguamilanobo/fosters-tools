@@ -285,3 +285,68 @@ def dashboard():
     async function approve(id){const p={};document.querySelectorAll('[data-id="'+id+'"]').forEach(el=>p[el.dataset.field]=el.value);try{await api('/dispatch/api/review/'+id,p);document.getElementById('msg').textContent='Asociación guardada. No se envió ningún mensaje.';load()}catch(e){document.getElementById('msg').textContent=e.message}}
     load();setInterval(load,20000);
     </script></body></html>"""
+
+@router.post("/dispatch/api/image/{ticket_id}")
+async def dispatch_image(ticket_id:int, request:Request):
+    authorized(request)
+    with db() as conn:
+        row=conn.execute("SELECT mime_type FROM tickets WHERE id=?",(ticket_id,)).fetchone()
+    if not row: raise HTTPException(404,"Ticket inexistente")
+    ext={"image/jpeg":".jpg","image/png":".png","image/webp":".webp"}.get(row["mime_type"])
+    if not ext: raise HTTPException(404,"Formato de imagen desconocido")
+    path=DATA_DIR/(str(ticket_id)+ext)
+    if not path.exists(): raise HTTPException(404,"Imagen perdida; configurar almacenamiento persistente")
+    return {"data_url":"data:"+row["mime_type"]+";base64,"+base64.b64encode(path.read_bytes()).decode()}
+
+
+class DispatchContact(BaseModel):
+    id: str
+    name: str
+    phone: Optional[str]=None
+    city: Optional[str]=None
+    brand: Optional[str]=None
+    order_ref: Optional[str]=None
+
+
+@router.post("/dispatch/admin/import-contacts")
+async def dispatch_import_contacts(request:Request, records:list[DispatchContact]):
+    admin(request)
+    if len(records)>500: raise HTTPException(400,"Máximo 500 contactos por lote")
+    with db() as conn:
+        for r in records:
+            if not r.id.strip() or not r.name.strip(): continue
+            conn.execute("""INSERT OR REPLACE INTO contacts
+              (id,name,phone,city,brand,order_ref,updated_at)
+              VALUES(?,?,?,?,?,?,?)""",
+              (r.id,r.name,r.phone,r.city,r.brand,r.order_ref,int(time.time())))
+    return {"ok":True,"received":len(records)}
+
+
+def _dispatch_norm(value):
+    import unicodedata
+    source=unicodedata.normalize("NFKD",str(value or ""))
+    return "".join(ch.lower() for ch in source if ch.isalnum() and not unicodedata.combining(ch))
+
+
+@router.post("/dispatch/api/suggestions/{ticket_id}")
+async def dispatch_suggestions(ticket_id:int, request:Request):
+    authorized(request)
+    with db() as conn:
+        ticket=conn.execute("SELECT extracted FROM tickets WHERE id=?",(ticket_id,)).fetchone()
+        if not ticket: raise HTTPException(404,"Ticket inexistente")
+        contacts=conn.execute("SELECT id,name,phone,city,brand,order_ref FROM contacts ORDER BY updated_at DESC LIMIT 5000").fetchall()
+    extracted=json.loads(ticket["extracted"])
+    name=_dispatch_norm(extracted.get("recipient_name"))
+    phone=_dispatch_norm(extracted.get("phone"))
+    city=_dispatch_norm(extracted.get("destination"))
+    results=[]
+    for r in contacts:
+        score=0
+        if phone and _dispatch_norm(r["phone"])==phone: score+=60
+        if name and _dispatch_norm(r["name"])==name: score+=30
+        elif name and (name in _dispatch_norm(r["name"]) or _dispatch_norm(r["name"]) in name): score+=15
+        if city and _dispatch_norm(r["city"]) and (city in _dispatch_norm(r["city"]) or _dispatch_norm(r["city"]) in city): score+=10
+        if score: results.append({**dict(r),"score":score})
+    results.sort(key=lambda x:x["score"],reverse=True)
+    return {"candidates":results[:10],"automatic_send":False,
+       "note":"Coincidencias orientativas, requieren revisión; datos importados manualmente."}
