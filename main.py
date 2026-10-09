@@ -6,8 +6,10 @@ from typing import Optional, List
 import os
 import json
 import hashlib
+import hmac
 import time
-from urllib import request as urllib_request, error as urllib_error
+import threading
+from urllib import request as urllib_request, error as urllib_error, parse as urllib_parse
 
 app = FastAPI(title="FOSTERS + aguaMILANO AI Tools")
 
@@ -353,6 +355,214 @@ def fosters_payment_summary(data: FostersPaymentSummaryRequest):
         "printer_notification_duplicate": printer_duplicate,
         "printer_notification_error": printer_error,
     }
+
+
+
+# -----------------------------------------------------------------------------
+# FOSTERS PRINTER CLOUD BRIDGE + TELEGRAM MINI APP
+# -----------------------------------------------------------------------------
+
+PRINTER_VERSION = "3.3.0"
+PRINTER_AGENT_SALT = ":fosters-printer-agent-v1"
+PRINTER_MINIAPP_URL = "https://fosters-tools.onrender.com/printer"
+
+printer_cloud_lock = threading.Lock()
+printer_cloud_state = {
+    "online": False, "last_heartbeat": 0, "version": None, "printer": None,
+    "printer_status": None, "queue_count": 0, "queue": [], "history": [],
+    "stats": {}, "last_print_at": None, "last_error": None,
+}
+printer_cloud_commands = []
+printer_cloud_results = []
+printer_menu_configured = False
+printer_member_cache = {}
+
+
+def _printer_expected_agent_key():
+    bot_token = os.getenv("PRINTER_TELEGRAM_BOT_TOKEN", "")
+    if not bot_token:
+        return None
+    return hashlib.sha256((bot_token + PRINTER_AGENT_SALT).encode("utf-8")).hexdigest()
+
+
+def _printer_require_agent(request: Request):
+    expected = _printer_expected_agent_key()
+    supplied = request.headers.get("x-printer-agent-key", "")
+    if not expected or not hmac.compare_digest(expected, supplied):
+        raise HTTPException(status_code=403, detail="Printer agent no autorizado.")
+
+
+def _printer_bot_api(method: str, payload: dict):
+    bot_token = os.getenv("PRINTER_TELEGRAM_BOT_TOKEN", "")
+    if not bot_token:
+        raise RuntimeError("PRINTER_TELEGRAM_BOT_TOKEN no configurado.")
+    req = urllib_request.Request(
+        f"https://api.telegram.org/bot{bot_token}/{method}",
+        data=urllib_parse.urlencode(payload).encode("utf-8"),
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib_request.urlopen(req, timeout=10) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    if not data.get("ok"):
+        raise RuntimeError(data.get("description") or f"Telegram rechazó {method}.")
+    return data.get("result")
+
+
+def _printer_ensure_menu_button():
+    global printer_menu_configured
+    if printer_menu_configured:
+        return
+    try:
+        _printer_bot_api("setChatMenuButton", {
+            "menu_button": json.dumps({
+                "type": "web_app", "text": "Panel Printer",
+                "web_app": {"url": PRINTER_MINIAPP_URL},
+            }, ensure_ascii=False)
+        })
+        printer_menu_configured = True
+    except Exception as exc:
+        print("[PRINTER] No se pudo configurar Menu Button:", exc)
+
+
+def _printer_validate_init_data(init_data: str):
+    if not init_data:
+        raise HTTPException(status_code=401, detail="Abrí el panel desde Telegram.")
+    bot_token = os.getenv("PRINTER_TELEGRAM_BOT_TOKEN", "")
+    if not bot_token:
+        raise HTTPException(status_code=503, detail="Bot de impresora no configurado.")
+    pairs = dict(urllib_parse.parse_qsl(init_data, keep_blank_values=True))
+    received_hash = pairs.pop("hash", None)
+    if not received_hash:
+        raise HTTPException(status_code=401, detail="Telegram initData inválido.")
+    data_check_string = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs))
+    secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
+    calculated = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(calculated, received_hash):
+        raise HTTPException(status_code=401, detail="Firma de Telegram inválida.")
+    try:
+        auth_date = int(pairs.get("auth_date", "0"))
+    except Exception:
+        auth_date = 0
+    if not auth_date or abs(time.time() - auth_date) > 86400:
+        raise HTTPException(status_code=401, detail="Sesión de Telegram vencida.")
+    try:
+        user = json.loads(pairs.get("user", "{}"))
+        user_id = int(user["id"])
+    except Exception:
+        raise HTTPException(status_code=401, detail="Usuario de Telegram inválido.")
+    chat_id = os.getenv("PRINTER_TELEGRAM_CHAT_ID", "")
+    if not chat_id:
+        raise HTTPException(status_code=503, detail="Grupo de impresora no configurado.")
+    cached = printer_member_cache.get(user_id)
+    if not cached or time.time() - cached["at"] > 60:
+        try:
+            member = _printer_bot_api("getChatMember", {"chat_id": chat_id, "user_id": str(user_id)})
+            allowed = member.get("status") in {"creator", "administrator", "member"}
+        except Exception:
+            allowed = False
+        printer_member_cache[user_id] = {"at": time.time(), "allowed": allowed}
+    if not printer_member_cache[user_id]["allowed"]:
+        raise HTTPException(status_code=403, detail="No pertenecés al grupo autorizado.")
+    return user
+
+
+def _printer_dashboard_auth(request: Request):
+    return _printer_validate_init_data(request.headers.get("x-telegram-init-data", ""))
+
+
+def _printer_public_state():
+    with printer_cloud_lock:
+        state = dict(printer_cloud_state)
+        age = max(0, int(time.time() - state.get("last_heartbeat", 0))) if state.get("last_heartbeat") else None
+        state["heartbeat_age_seconds"] = age
+        state["online"] = bool(age is not None and age <= 30)
+        state["pending_commands"] = len(printer_cloud_commands)
+        state["recent_results"] = list(printer_cloud_results[-10:])
+        return state
+
+
+@app.get("/printer", response_class=HTMLResponse)
+def printer_dashboard():
+    return """<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Fosters Printer</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>*{box-sizing:border-box}body{margin:0;background:#0b0b0b;color:#f4f4ef;font:15px Arial,sans-serif}.wrap{max-width:720px;margin:auto;padding:18px 16px 40px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.title{font:700 22px Georgia,serif;letter-spacing:2px}.pill{padding:7px 10px;border:1px solid #333;border-radius:999px;color:#bbb}.card{background:#151515;border:1px solid #282828;border-radius:16px;padding:16px;margin:12px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.metric{background:#101010;border:1px solid #242424;border-radius:12px;padding:12px}.metric b{display:block;font-size:22px;margin-top:4px}.muted{color:#8f8f8f;font-size:12px}.job{border-top:1px solid #2c2c2c;padding:12px 0}.job:first-child{border-top:0}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}button{border:0;border-radius:10px;padding:10px 12px;font-weight:700;background:#f3f1e8;color:#111}button.danger{background:#3a1515;color:#ffbaba}button.secondary{background:#252525;color:#eee}.error{color:#ff9c9c}.ok{color:#8ee49a}h2{font-size:15px;margin:0 0 10px}.big{font-size:18px;font-weight:700}.empty{padding:18px 0;color:#888;text-align:center}</style></head>
+<body><div class="wrap"><div class="top"><div class="title">FOSTERS PRINTER</div><div id="online" class="pill">Conectando…</div></div>
+<div class="grid"><div class="metric"><span class="muted">Impresora</span><b id="printer">—</b><span id="pstatus" class="muted">—</span></div><div class="metric"><span class="muted">Cola</span><b id="qcount">0</b><span class="muted">trabajos</span></div><div class="metric"><span class="muted">Hoy</span><b id="today">0</b><span class="muted">impresiones</span></div><div class="metric"><span class="muted">Versión PC</span><b id="version">—</b><span id="hb" class="muted">—</span></div></div>
+<div class="card"><h2>Acciones rápidas</h2><div class="actions"><button onclick="act('resume')">▶ Reanudar</button><button class="secondary" onclick="act('force')">⚡ Forzar cola</button><button class="secondary" onclick="act('pause')">⏸ Pausar</button><button class="danger" onclick="confirmClear()">🗑 Borrar todo</button></div></div>
+<div class="card"><h2>Cola de Windows</h2><div id="queue"></div></div><div class="card"><h2>Historial reciente</h2><div id="history"></div></div><div id="msg" class="muted"></div></div>
+<script>
+const tg=window.Telegram&&window.Telegram.WebApp;if(tg){tg.ready();tg.expand()}const initData=tg?tg.initData:'';
+async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Init-Data':initData},body:JSON.stringify(body||{})});const d=await r.json();if(!r.ok)throw Error(d.detail||'Error');return d}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+async function refresh(){try{const s=await api('/printer/api/status');online.textContent=s.online?'ONLINE':'OFFLINE';online.className='pill '+(s.online?'ok':'error');printer.textContent=s.printer||'—';pstatus.textContent=s.printer_status||'Sin estado';qcount.textContent=s.queue_count||0;version.textContent=s.version||'—';hb.textContent=s.heartbeat_age_seconds==null?'sin heartbeat':s.heartbeat_age_seconds+'s';today.textContent=(s.stats||{}).today||0;queue.innerHTML=(s.queue||[]).length?(s.queue||[]).map(function(j){return '<div class="job"><div class="big">#'+esc(j.id)+' · '+esc(j.document||'Trabajo')+'</div><div class="muted">'+esc(j.status||'')+(j.age_seconds!=null?' · '+Math.floor(j.age_seconds/60)+'m':'')+'</div><div class="actions"><button class="secondary" onclick="act(\\'force_job\\',{job_id:'+Number(j.id)+'})">Reintentar</button><button class="danger" onclick="act(\\'clear_job\\',{job_id:'+Number(j.id)+'})">Borrar #'+esc(j.id)+'</button></div></div>'}).join(''):'<div class="empty">Cola vacía</div>';history.innerHTML=(s.history||[]).length?(s.history||[]).map(function(h){return '<div class="job"><div class="big">#'+esc(h.print_id)+' · '+esc(h.name||'Sin nombre')+'</div><div>'+esc(h.order||'')+'</div><div class="muted">'+esc(h.created_at||'')+'</div><div class="actions"><button class="secondary" onclick="act(\\'reprint\\',{print_id:'+Number(h.print_id)+'})">Reimprimir</button></div></div>'}).join(''):'<div class="empty">Sin historial todavía</div>'}catch(e){msg.textContent=e.message;online.textContent='ERROR';online.className='pill error'}}
+async function act(action,args){try{msg.textContent='Enviando…';const body=Object.assign({action:action},args||{});await api('/printer/api/action',body);msg.textContent='Comando enviado a la PC.';setTimeout(refresh,700)}catch(e){msg.textContent=e.message}}
+function confirmClear(){if(confirm('¿Borrar TODOS los trabajos de la cola?'))act('clear_all')}
+refresh();setInterval(refresh,3000);
+</script></body></html>"""
+
+
+@app.post("/printer/api/status")
+async def printer_api_status(request: Request):
+    _printer_dashboard_auth(request)
+    return _printer_public_state()
+
+
+@app.post("/printer/api/action")
+async def printer_api_action(request: Request):
+    user = _printer_dashboard_auth(request)
+    body = await request.json()
+    action = str(body.get("action") or "").strip()
+    allowed = {"clear_job", "clear_all", "force", "force_job", "pause", "resume", "reprint", "test"}
+    if action not in allowed:
+        raise HTTPException(status_code=400, detail="Acción no válida.")
+    command = {
+        "id": hashlib.sha256(f"{time.time_ns()}:{user.get('id')}:{action}".encode()).hexdigest()[:16],
+        "action": action, "job_id": body.get("job_id"), "print_id": body.get("print_id"),
+        "created_at": time.time(), "requested_by": user.get("id"),
+    }
+    with printer_cloud_lock:
+        printer_cloud_commands.append(command)
+        if len(printer_cloud_commands) > 100:
+            del printer_cloud_commands[:-100]
+    return {"ok": True, "command_id": command["id"]}
+
+
+@app.post("/printer/agent/heartbeat")
+async def printer_agent_heartbeat(request: Request):
+    _printer_require_agent(request)
+    body = await request.json()
+    with printer_cloud_lock:
+        printer_cloud_state.update({
+            "online": True, "last_heartbeat": time.time(), "version": body.get("version"),
+            "printer": body.get("printer"), "printer_status": body.get("printer_status"),
+            "queue_count": body.get("queue_count", 0), "queue": body.get("queue") or [],
+            "history": body.get("history") or [], "stats": body.get("stats") or {},
+            "last_print_at": body.get("last_print_at"), "last_error": body.get("last_error"),
+        })
+    _printer_ensure_menu_button()
+    return {"ok": True, "server_version": PRINTER_VERSION}
+
+
+@app.get("/printer/agent/commands")
+async def printer_agent_commands(request: Request):
+    _printer_require_agent(request)
+    with printer_cloud_lock:
+        return {"commands": list(printer_cloud_commands[:20])}
+
+
+@app.post("/printer/agent/result")
+async def printer_agent_result(request: Request):
+    _printer_require_agent(request)
+    body = await request.json()
+    command_id = str(body.get("command_id") or "")
+    with printer_cloud_lock:
+        printer_cloud_commands[:] = [x for x in printer_cloud_commands if x.get("id") != command_id]
+        printer_cloud_results.append({"command_id": command_id, "ok": bool(body.get("ok")), "message": body.get("message"), "at": time.time()})
+        if len(printer_cloud_results) > 50:
+            del printer_cloud_results[:-50]
+    return {"ok": True}
 
 
 # -----------------------------------------------------------------------------
