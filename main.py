@@ -420,9 +420,24 @@ def _printer_ensure_menu_button():
                 "web_app": {"url": PRINTER_MINIAPP_URL},
             }, ensure_ascii=False)
         })
+        _printer_bot_api("setMyCommands", {
+            "commands": json.dumps([
+                {"command": "status", "description": "Estado de PC, impresora y cola"},
+                {"command": "cola", "description": "Ver trabajos en la cola de Windows"},
+                {"command": "borrarcola", "description": "Borrar #ID o all con confirmación"},
+                {"command": "forzarcola", "description": "Reanudar/reintentar la cola"},
+                {"command": "pausar", "description": "Pausar la impresora"},
+                {"command": "reanudar", "description": "Reanudar la impresora"},
+                {"command": "historial", "description": "Ver últimas impresiones"},
+                {"command": "reimprimir", "description": "Reimprimir por Print ID"},
+                {"command": "stats", "description": "Estadísticas del día"},
+                {"command": "version", "description": "Ver versión local"},
+                {"command": "help", "description": "Ver todos los comandos"},
+            ], ensure_ascii=False)
+        })
         printer_menu_configured = True
     except Exception as exc:
-        print("[PRINTER] No se pudo configurar Menu Button:", exc)
+        print("[PRINTER] No se pudo configurar Menu Button/comandos:", exc)
 
 
 def _printer_validate_init_data(init_data: str):
