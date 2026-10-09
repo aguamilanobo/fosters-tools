@@ -1,0 +1,287 @@
+"""Fosters Dispatch: secure receipt intake, vision extraction and human review.
+No customer messages are sent by this module.
+"""
+from fastapi import APIRouter, Request, HTTPException, Header
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+from typing import Optional
+from urllib import request as urlreq, parse as urlparse
+from pathlib import Path
+import os, json, sqlite3, hashlib, hmac, time, base64, secrets, mimetypes, re
+
+router = APIRouter()
+DATA_DIR = Path(os.getenv("DISPATCH_DATA_DIR", "/tmp/fosters-dispatch"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DIR / "dispatch.sqlite3"
+BOT_TOKEN = lambda: os.getenv("DISPATCH_TELEGRAM_BOT_TOKEN", "")
+ADMIN_KEY = lambda: os.getenv("DISPATCH_ADMIN_KEY", "")
+MAX_IMAGE = 12 * 1024 * 1024
+
+
+def db():
+    connection = sqlite3.connect(str(DB_PATH), timeout=10)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("""CREATE TABLE IF NOT EXISTS tickets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL,
+        source TEXT NOT NULL, chat_id TEXT, telegram_file_id TEXT,
+        filename TEXT, mime_type TEXT, sha256 TEXT UNIQUE,
+        status TEXT NOT NULL, extracted TEXT NOT NULL DEFAULT '{}',
+        verified TEXT NOT NULL DEFAULT '{}', matched_order TEXT,
+        reviewer_id TEXT, reviewed_at INTEGER, message_status TEXT NOT NULL DEFAULT 'not_sent',
+        error TEXT
+    )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER, action TEXT NOT NULL,
+        actor TEXT NOT NULL, created_at INTEGER NOT NULL, details TEXT
+    )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS contacts (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT, city TEXT,
+        brand TEXT, order_ref TEXT, updated_at INTEGER NOT NULL
+    )""")
+    connection.commit()
+    return connection
+
+
+def admin(request: Request):
+    expected = ADMIN_KEY()
+    provided = request.headers.get("x-dispatch-admin-key", "")
+    if not expected or not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(403, "Acceso no autorizado.")
+
+
+def tg(method, payload):
+    if not BOT_TOKEN():
+        raise RuntimeError("Falta DISPATCH_TELEGRAM_BOT_TOKEN")
+    req = urlreq.Request(
+        "https://api.telegram.org/bot" + BOT_TOKEN() + "/" + method,
+        data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"},
+        method="POST")
+    with urlreq.urlopen(req, timeout=20) as resp:
+        result = json.load(resp)
+    if not result.get("ok"):
+        raise RuntimeError("Telegram respondió con error")
+    return result.get("result")
+
+
+def tg_message(chat_id, text):
+    try:
+        tg("sendMessage", {"chat_id": chat_id, "text": text[:3500]})
+    except Exception as ex:
+        print("[DISPATCH] No se pudo responder por Telegram:", type(ex).__name__)
+
+
+def audit(conn, ticket_id, action, actor, details=None):
+    conn.execute("INSERT INTO audit(ticket_id,action,actor,created_at,details) VALUES(?,?,?,?,?)",
+                 (ticket_id, action, str(actor), int(time.time()), json.dumps(details or {}, ensure_ascii=False)))
+
+
+def parse_ticket(image_bytes, mime):
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key:
+        return {}, "vision_not_configured"
+    prompt = (
+      "Lee este comprobante de transporte boliviano. Extrae EXCLUSIVAMENTE datos visibles. "
+      "No inventes ni completes valores. Responde SOLO JSON con: "
+      "recipient_name, phone, ci, destination, carrier, tracking_number, sender, shipment_date. "
+      "Usa null si no se distingue o no aparece. Distingue remitente de destinatario."
+    )
+    payload = {
+      "model": os.getenv("DISPATCH_VISION_MODEL", "gpt-4.1-mini"),
+      "messages": [{"role":"user","content":[{"type":"text","text":prompt},
+        {"type":"image_url","image_url":{"url":"data:"+mime+";base64,"+base64.b64encode(image_bytes).decode()}}]}],
+      "response_format":{"type":"json_object"}, "max_tokens":500
+    }
+    req = urlreq.Request("https://api.openai.com/v1/chat/completions",
+      data=json.dumps(payload).encode(), method="POST",
+      headers={"Authorization":"Bearer "+api_key, "Content-Type":"application/json"})
+    try:
+        with urlreq.urlopen(req, timeout=55) as resp:
+            response = json.load(resp)
+        parsed = json.loads(response["choices"][0]["message"]["content"])
+        allowed = ("recipient_name","phone","ci","destination","carrier","tracking_number","sender","shipment_date")
+        return {k: parsed.get(k) for k in allowed}, None
+    except Exception as ex:
+        print("[DISPATCH] Vision error:", type(ex).__name__)
+        return {}, "vision_failed"
+
+
+def read_telegram_file(file_id):
+    info = tg("getFile", {"file_id":file_id})
+    path = info.get("file_path", "")
+    if not path:
+        raise ValueError("Telegram no entregó ruta")
+    if info.get("file_size", 0) > MAX_IMAGE:
+        raise ValueError("Imagen demasiado grande")
+    url = "https://api.telegram.org/file/bot" + BOT_TOKEN() + "/" + path
+    with urlreq.urlopen(url, timeout=25) as resp:
+        binary = resp.read(MAX_IMAGE + 1)
+    if len(binary) > MAX_IMAGE: raise ValueError("Imagen demasiado grande")
+    return binary
+
+
+def ingest(raw, source, file_id=None, chat_id=None, filename=None):
+    if not raw or len(raw)>MAX_IMAGE: raise ValueError("Imagen vacía o demasiado grande")
+    if raw.startswith(b"\xff\xd8\xff"):
+        mime, ext = "image/jpeg", ".jpg"
+    elif raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime, ext = "image/png", ".png"
+    elif raw.startswith(b"RIFF") and raw[8:12] == b"WEBP":
+        mime, ext = "image/webp", ".webp"
+    else: raise ValueError("Formato de imagen no admitido")
+    digest = hashlib.sha256(raw).hexdigest()
+    with db() as conn:
+        previous=conn.execute("SELECT id FROM tickets WHERE sha256=?", (digest,)).fetchone()
+        if previous: return int(previous["id"]), True
+        now = int(time.time())
+        cur=conn.execute("""INSERT INTO tickets
+          (created_at,source,chat_id,telegram_file_id,filename,mime_type,sha256,status)
+          VALUES(?,?,?,?,?,?,?,?)""",
+          (now,source,str(chat_id) if chat_id else None,file_id,filename,mime,digest,"processing"))
+        ticket_id = cur.lastrowid
+        audit(conn,ticket_id,"received",source)
+    (DATA_DIR / (str(ticket_id)+ext)).write_bytes(raw)
+    extracted, error = parse_ticket(raw, mime)
+    with db() as conn:
+        conn.execute("UPDATE tickets SET status=?, extracted=?,error=? WHERE id=?",
+          ("needs_review" if not error else "needs_extraction",
+           json.dumps(extracted,ensure_ascii=False),error,ticket_id))
+        audit(conn,ticket_id,"extracted" if not error else "extraction_pending","system",{"error":error})
+    return ticket_id, False
+
+
+def verify_telegram(init_data):
+    params=dict(urlparse.parse_qsl(init_data,keep_blank_values=True))
+    signature=params.pop("hash",None)
+    if not signature or not BOT_TOKEN(): raise HTTPException(401,"Abrí desde Telegram.")
+    check="\n".join(k+"="+params[k] for k in sorted(params))
+    secret=hmac.new(b"WebAppData",BOT_TOKEN().encode(),hashlib.sha256).digest()
+    candidate=hmac.new(secret,check.encode(),hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature,candidate): raise HTTPException(403,"Firma inválida.")
+    try:
+        user=json.loads(params["user"])
+        if abs(time.time()-int(params["auth_date"])) > 86400: raise ValueError()
+    except Exception: raise HTTPException(401,"Sesión expirada.")
+    allowed={part.strip() for part in os.getenv("DISPATCH_ALLOWED_USER_IDS","").split(",") if part.strip()}
+    if not allowed or str(user.get("id")) not in allowed:
+        raise HTTPException(403,"Usuario no autorizado.")
+    return str(user["id"])
+
+
+def authorized(request):
+    key = request.headers.get("x-dispatch-admin-key","")
+    if ADMIN_KEY() and key and hmac.compare_digest(key,ADMIN_KEY()):
+        return "admin"
+    return verify_telegram(request.headers.get("x-telegram-init-data",""))
+
+
+@router.post("/dispatch/telegram/webhook")
+async def telegram_webhook(request:Request):
+    expected=os.getenv("DISPATCH_TELEGRAM_WEBHOOK_SECRET","")
+    provided=request.headers.get("x-telegram-bot-api-secret-token","")
+    if not expected or not hmac.compare_digest(expected,provided):
+        raise HTTPException(403,"Webhook no autorizado")
+    event=await request.json()
+    msg=event.get("message") or event.get("channel_post") or {}
+    chat=msg.get("chat") or {}
+    chat_id=chat.get("id")
+    user=(msg.get("from") or {}).get("id")
+    allowed={x.strip() for x in os.getenv("DISPATCH_ALLOWED_USER_IDS","").split(",") if x.strip()}
+    if str(user) not in allowed: return {"ok":True,"ignored":"unauthorized_sender"}
+    allowed_chat=os.getenv("DISPATCH_TELEGRAM_CHAT_ID","")
+    if allowed_chat and str(chat_id)!=allowed_chat: return {"ok":True,"ignored":"wrong_chat"}
+    if not (msg.get("photo") or msg.get("document")):
+        if (msg.get("text") or "").startswith("/start"):
+            tg_message(chat_id,"Fosters Dispatch listo. Mandame fotos de tickets y revisalos en el panel de Telegram.")
+        return {"ok":True}
+    photo=msg.get("photo") or []
+    doc=msg.get("document") or {}
+    if photo:
+        file_id=photo[-1]["file_id"]
+    elif str(doc.get("mime_type","")).startswith("image/"):
+        file_id=doc.get("file_id")
+    else:
+        tg_message(chat_id,"Mandame una foto o una imagen como archivo.")
+        return {"ok":True}
+    try:
+        raw=read_telegram_file(file_id)
+        ticket_id,duplicate=ingest(raw,"telegram",file_id=file_id,chat_id=chat_id)
+        tg_message(chat_id,("Ya estaba cargado" if duplicate else "Ticket recibido")+" #"+str(ticket_id)+". Revisalo en el Panel Dispatch antes de enviarlo.")
+    except Exception as ex:
+        tg_message(chat_id,"No pude procesar la imagen. Revisá formato y tamaño.")
+        print("[DISPATCH] Ticket error:",type(ex).__name__)
+    return {"ok":True}
+
+
+class DispatchTicketReview(BaseModel):
+    recipient_name: Optional[str]=None
+    phone: Optional[str]=None
+    ci: Optional[str]=None
+    destination: Optional[str]=None
+    carrier: Optional[str]=None
+    tracking_number: Optional[str]=None
+    matched_order: Optional[str]=None
+
+
+@router.post("/dispatch/api/list")
+async def tickets_list(request:Request):
+    authorized(request)
+    with db() as conn:
+        rows=conn.execute("""SELECT id,created_at,source,status,extracted,verified,matched_order,
+                        reviewer_id,reviewed_at,message_status,error
+                        FROM tickets ORDER BY id DESC LIMIT 100""").fetchall()
+    return {"tickets":[{**dict(r),"extracted":json.loads(r["extracted"]),
+      "verified":json.loads(r["verified"])} for r in rows],
+      "send_enabled":False, "mode":"review_only"}
+
+
+@router.post("/dispatch/api/review/{ticket_id}")
+async def ticket_review(ticket_id:int,request:Request,payload:DispatchTicketReview):
+    actor=authorized(request)
+    with db() as conn:
+        row=conn.execute("SELECT id FROM tickets WHERE id=?", (ticket_id,)).fetchone()
+        if not row: raise HTTPException(404,"Ticket inexistente")
+        values=payload.dict(exclude_none=True)
+        if not values.get("recipient_name") or not values.get("matched_order"):
+            raise HTTPException(400,"Debés confirmar destinatario y referencia del pedido.")
+        conn.execute("""UPDATE tickets SET verified=?,matched_order=?,reviewer_id=?,reviewed_at=?,
+                        status='approved_not_sent' WHERE id=?""",
+                     (json.dumps(values,ensure_ascii=False),values["matched_order"],actor,int(time.time()),ticket_id))
+        audit(conn,ticket_id,"review_approved",actor,values)
+    return {"ok":True,"status":"approved_not_sent","sent":False}
+
+
+@router.post("/dispatch/api/send/{ticket_id}")
+async def ticket_send(ticket_id:int,request:Request):
+    authorized(request)
+    raise HTTPException(501, "Envío deshabilitado hasta verificar y conectar la API de Pancake/WhatsApp.")
+
+
+@router.post("/dispatch/admin/setup")
+async def setup(request:Request):
+    admin(request)
+    if not BOT_TOKEN() or not os.getenv("DISPATCH_TELEGRAM_WEBHOOK_SECRET"):
+        raise HTTPException(503,"Faltan variables de Telegram.")
+    base=os.getenv("DISPATCH_PUBLIC_URL","https://fosters-tools.onrender.com").rstrip("/")
+    result=tg("setWebhook",{"url":base+"/dispatch/telegram/webhook",
+       "secret_token":os.getenv("DISPATCH_TELEGRAM_WEBHOOK_SECRET"),
+       "allowed_updates":["message"]})
+    return {"ok":bool(result),"webhook_url":base+"/dispatch/telegram/webhook"}
+
+
+@router.get("/dispatch",response_class=HTMLResponse)
+def dashboard():
+    return """<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Fosters Dispatch</title><script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>body{background:#0b0b0b;color:#f3f1ea;font:15px Arial;margin:0}.wrap{max-width:760px;margin:auto;padding:22px}h1{font:24px Georgia;letter-spacing:2px}.card{background:#191919;border:1px solid #333;border-radius:14px;padding:18px;margin:12px 0}input{background:#111;color:white;border:1px solid #555;border-radius:6px;padding:10px;width:100%;box-sizing:border-box;margin:4px 0 12px}button{background:#f0eede;color:#111;border:0;border-radius:8px;padding:11px 15px;font-weight:bold}.muted{color:#aaa}.alert{color:#edbe75}.err{color:#fa9999}small{color:#aaa}</style></head>
+    <body><div class="wrap"><h1>FOSTERS DISPATCH</h1><p class="alert">Modo seguro · revisión manual · envío WhatsApp todavía deshabilitado</p>
+    <div id="list">Cargando tickets…</div><p id="msg"></p></div>
+    <script>
+    const tg=window.Telegram&&Telegram.WebApp;if(tg){tg.ready();tg.expand()}
+    const auth=tg?tg.initData:'';
+    function esc(v){return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+    async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Init-Data':auth},body:JSON.stringify(body||{})});const j=await r.json();if(!r.ok)throw Error(j.detail||'Error');return j}
+    async function load(){try{const res=await api('/dispatch/api/list');document.getElementById('list').innerHTML=res.tickets.map(t=>{const x=Object.assign({},t.extracted,t.verified);return '<div class="card"><b>#'+t.id+' · '+esc(t.status)+'</b><p class="muted">Ticket recibido '+new Date(t.created_at*1000).toLocaleString()+'</p>'+['recipient_name','phone','destination','carrier','tracking_number','matched_order'].map(k=>'<label><small>'+k+'</small><input data-id="'+t.id+'" data-field="'+k+'" value="'+esc(k==='matched_order'?t.matched_order:x[k])+'"></label>').join('')+'<button onclick="approve('+t.id+')">Confirmar asociación (NO envía)</button></div>'}).join('')||'<p>No hay tickets. Enviá fotos al bot.</p>'}catch(e){document.getElementById('msg').textContent=e.message}}
+    async function approve(id){const p={};document.querySelectorAll('[data-id="'+id+'"]').forEach(el=>p[el.dataset.field]=el.value);try{await api('/dispatch/api/review/'+id,p);document.getElementById('msg').textContent='Asociación guardada. No se envió ningún mensaje.';load()}catch(e){document.getElementById('msg').textContent=e.message}}
+    load();setInterval(load,20000);
+    </script></body></html>"""
