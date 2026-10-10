@@ -275,7 +275,7 @@ def dashboard():
     <title>Fosters Dispatch</title><script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>body{background:#0b0b0b;color:#f3f1ea;font:15px Arial;margin:0}.wrap{max-width:760px;margin:auto;padding:22px}h1{font:24px Georgia;letter-spacing:2px}.card{background:#191919;border:1px solid #333;border-radius:14px;padding:18px;margin:12px 0}input{background:#111;color:white;border:1px solid #555;border-radius:6px;padding:10px;width:100%;box-sizing:border-box;margin:4px 0 12px}button{background:#f0eede;color:#111;border:0;border-radius:8px;padding:11px 15px;font-weight:bold}.muted{color:#aaa}.alert{color:#edbe75}.err{color:#fa9999}small{color:#aaa}</style></head>
     <body><div class="wrap"><h1>FOSTERS DISPATCH</h1><p class="alert">Modo seguro · revisión manual · envío WhatsApp todavía deshabilitado</p>
-    <button onclick="checkPancake()">Comprobar conexión Pancake</button><p id="pancakeResult" class="muted"></p><div id="list">Cargando tickets…</div><p id="msg"></p></div>
+    <button onclick="checkPancake()">Comprobar conexión Pancake</button> <button onclick="checkBearer()">Probar token Bearer</button><p id="pancakeResult" class="muted"></p><div id="list">Cargando tickets…</div><p id="msg"></p></div>
     <script>
     const tg=window.Telegram&&Telegram.WebApp;if(tg){tg.ready();tg.expand()}
     const auth=tg?tg.initData:'';
@@ -283,6 +283,7 @@ def dashboard():
     async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Init-Data':auth},body:JSON.stringify(body||{})});const j=await r.json();if(!r.ok)throw Error(j.detail||'Error');return j}
     async function load(){try{const res=await api('/dispatch/api/list');document.getElementById('list').innerHTML=res.tickets.map(t=>{const x=Object.assign({},t.extracted,t.verified);return '<div class="card"><b>#'+t.id+' · '+esc(t.status)+'</b><p class="muted">Ticket recibido '+new Date(t.created_at*1000).toLocaleString()+'</p>'+['recipient_name','phone','destination','carrier','tracking_number','matched_order'].map(k=>'<label><small>'+k+'</small><input data-id="'+t.id+'" data-field="'+k+'" value="'+esc(k==='matched_order'?t.matched_order:x[k])+'"></label>').join('')+'<button onclick="approve('+t.id+')">Confirmar asociación (NO envía)</button></div>'}).join('')||'<p>No hay tickets. Enviá fotos al bot.</p>'}catch(e){document.getElementById('msg').textContent=e.message}}
     async function approve(id){const p={};document.querySelectorAll('[data-id="'+id+'"]').forEach(el=>p[el.dataset.field]=el.value);try{await api('/dispatch/api/review/'+id,p);document.getElementById('msg').textContent='Asociación guardada. No se envió ningún mensaje.';load()}catch(e){document.getElementById('msg').textContent=e.message}}
+    async function checkBearer(){const el=document.getElementById('pancakeResult');el.textContent='Verificando autenticación Bearer…';try{const d=await api('/dispatch/api/pancake/check-bearer');el.textContent='Bearer · HTTP '+(d.http_status||'?')+' · API success: '+String(d.api_success)+' · error_code: '+(d.api_error_code||'-')+' · claves: '+(d.response_keys||[]).join(', ')+(d.valid?' · CONECTADO':' · SIN VALIDAR')}catch(e){el.textContent='Error: '+e.message}}
     async function checkPancake(){const el=document.getElementById('pancakeResult');el.textContent='Consultando Pancake (solo lectura)…';try{const d=await api('/dispatch/api/pancake/check');el.textContent=d.connected?'Conexión correcta. Conversaciones en muestra: '+d.conversations_in_sample:'HTTP '+(d.http_status||'?')+' · Estructura: '+(d.response_type||'?')+' · Claves: '+(d.response_keys||[]).join(', ')+' · data: '+(d.data_type||'?')+' · success: '+String(d.api_success)+' · error_code: '+(d.api_error_code||'no disponible')}catch(e){el.textContent='Error: '+e.message}}
     load();setInterval(load,20000);
     </script></body></html>"""
@@ -390,3 +391,35 @@ async def dispatch_pancake_check(request:Request):
         print("[DISPATCH] Pancake read-only diagnostic failed:",type(exc).__name__)
         return {"connected":False,"reason":"network_or_response_error",
                 "note":"Revisar Render Logs. No se envió nada."}
+
+@router.post("/dispatch/api/pancake/check-bearer")
+async def dispatch_pancake_check_bearer(request:Request):
+    """Diagnostic only. Confirm whether public token is accepted as Bearer by this endpoint.
+    Never return token, messages, customer details, or raw Pancake response.
+    """
+    authorized(request)
+    token=os.getenv("PANCAKE_API_TOKEN","").strip()
+    page=os.getenv("DISPATCH_PANCAKE_PAGE_ID","").strip()
+    if not token or not re.fullmatch(r"[A-Za-z0-9_-]{5,100}",page):
+        return {"valid":False,"reason":"missing_or_invalid_config"}
+    endpoint="https://pages.fm/api/public_api/v2/pages/"+urlparse.quote(page,safe="")+"/conversations"
+    req=urlreq.Request(endpoint,
+        headers={"Accept":"application/json","Authorization":"Bearer "+token,
+                 "User-Agent":"FostersDispatch/0.1"},method="GET")
+    try:
+        with urlreq.urlopen(req,timeout=15) as response:
+            status=response.status
+            raw=response.read(512*1024)
+        body=json.loads(raw)
+        keys=list(body.keys())[:12] if isinstance(body,dict) else []
+        accepted=isinstance(body,dict) and body.get("success") is not False and isinstance(body.get("conversations"),list)
+        return {"valid":accepted,"http_status":status,
+                "api_success":body.get("success") if isinstance(body,dict) and isinstance(body.get("success"),bool) else None,
+                "api_error_code":str(body.get("error_code"))[:30] if isinstance(body,dict) and body.get("success") is False else None,
+                "response_keys":keys,
+                "explanation":"Prueba de lectura únicamente; respuesta sin datos de clientes. Endpoint puede requerir token de página."}
+    except urlreq.HTTPError as exc:
+        return {"valid":False,"http_status":exc.code,"reason":"http_error"}
+    except Exception as exc:
+        print("[DISPATCH] Bearer diagnostic error:",type(exc).__name__)
+        return {"valid":False,"reason":"network_or_invalid_response"}
