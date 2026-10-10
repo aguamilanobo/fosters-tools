@@ -15,6 +15,8 @@ app = FastAPI(title="FOSTERS + aguaMILANO AI Tools")
 
 from dispatch import router as dispatch_router
 app.include_router(dispatch_router)
+from dispatch_ops import router as dispatch_ops_router
+app.include_router(dispatch_ops_router)
 
 API_TOKEN = "fosters_bot_2026"
 telegram_bearer = HTTPBearer(auto_error=False)
