@@ -284,7 +284,7 @@ def dashboard():
     async function load(){try{const res=await api('/dispatch/api/list');document.getElementById('list').innerHTML=res.tickets.map(t=>{const x=Object.assign({},t.extracted,t.verified);return '<div class="card"><b>#'+t.id+' · '+esc(t.status)+'</b><p class="muted">Ticket recibido '+new Date(t.created_at*1000).toLocaleString()+'</p>'+['recipient_name','phone','destination','carrier','tracking_number','matched_order'].map(k=>'<label><small>'+k+'</small><input data-id="'+t.id+'" data-field="'+k+'" value="'+esc(k==='matched_order'?t.matched_order:x[k])+'"></label>').join('')+'<button onclick="approve('+t.id+')">Confirmar asociación (NO envía)</button></div>'}).join('')||'<p>No hay tickets. Enviá fotos al bot.</p>'}catch(e){document.getElementById('msg').textContent=e.message}}
     async function approve(id){const p={};document.querySelectorAll('[data-id="'+id+'"]').forEach(el=>p[el.dataset.field]=el.value);try{await api('/dispatch/api/review/'+id,p);document.getElementById('msg').textContent='Asociación guardada. No se envió ningún mensaje.';load()}catch(e){document.getElementById('msg').textContent=e.message}}
     async function checkBearer(){const el=document.getElementById('pancakeResult');el.textContent='Verificando autenticación Bearer…';try{const d=await api('/dispatch/api/pancake/check-bearer');el.textContent='Bearer · HTTP '+(d.http_status||'?')+' · API success: '+String(d.api_success)+' · error_code: '+(d.api_error_code||'-')+' · claves: '+(d.response_keys||[]).join(', ')+(d.valid?' · CONECTADO':' · SIN VALIDAR')}catch(e){el.textContent='Error: '+e.message}}
-    async function checkBotcake(){const el=document.getElementById('pancakeResult');el.textContent='Consultando Botcake, solo lectura…';try{const d=await api('/dispatch/api/botcake/check');el.textContent=d.connected?'Botcake conectado (solo lectura)':'Botcake pendiente · '+(d.reason||'respuesta no validada')+' · HTTP '+(d.http_status||'?')+' · success '+String(d.api_success)+' · código '+(d.api_error_code||'-')+' · token '+(d.token_present===false?'falta':'configurado')+' · página '+(d.page_present===false?'falta':'configurada')}catch(e){el.textContent='Error Botcake: '+e.message}}
+    async function checkBotcake(){const el=document.getElementById('pancakeResult');el.textContent='Consultando Botcake, solo lectura…';try{const d=await api('/dispatch/api/botcake/check');el.textContent=d.connected?'Botcake conectado · '+d.customer_count+' clientes en respuesta · SOLO LECTURA':'Botcake pendiente · '+(d.reason||'respuesta no validada')+' · HTTP '+(d.http_status||'?')+' · tipo respuesta '+(d.response_type||'-')+' · success '+String(d.api_success)+' · código '+(d.api_error_code||'-')+' · token '+(d.token_present===false?'falta':'configurado')+' · página '+(d.page_present===false?'falta':'configurada')}catch(e){el.textContent='Error Botcake: '+e.message}}
     async function checkPancake(){const el=document.getElementById('pancakeResult');el.textContent='Consultando Pancake (solo lectura)…';try{const d=await api('/dispatch/api/pancake/check');el.textContent=d.connected?'Conexión correcta. Conversaciones en muestra: '+d.conversations_in_sample:'HTTP '+(d.http_status||'?')+' · Estructura: '+(d.response_type||'?')+' · Claves: '+(d.response_keys||[]).join(', ')+' · data: '+(d.data_type||'?')+' · success: '+String(d.api_success)+' · error_code: '+(d.api_error_code||'no disponible')}catch(e){el.textContent='Error: '+e.message}}
     load();setInterval(load,20000);
     </script></body></html>"""
@@ -444,11 +444,17 @@ async def dispatch_botcake_check(request:Request):
             status=response.status
             raw=response.read(512*1024)
         body=json.loads(raw)
-        accepted=isinstance(body,dict) and body.get("success") is True
+        wrapped=body.get("response") if isinstance(body,dict) else None
+        customers=wrapped if isinstance(wrapped,list) else (body.get("data") if isinstance(body,dict) and isinstance(body.get("data"),list) else None)
+        rejected=isinstance(body,dict) and body.get("success") is False
+        accepted=(status==200 and isinstance(customers,list) and not rejected)
         return {"connected":accepted,"http_status":status,
            "api_success":body.get("success") if isinstance(body,dict) else None,
-           "api_error_code":str(body.get("error_code"))[:60] if isinstance(body,dict) and not accepted and body.get("error_code") else None,
+           "api_error_code":str(body.get("error_code"))[:60] if isinstance(body,dict) and rejected and body.get("error_code") else None,
            "response_keys":list(body.keys())[:12] if isinstance(body,dict) else [],
+           "response_type":type(wrapped).__name__,
+           "customer_count":len(customers) if accepted else None,
+           "reason":"api_rejected" if rejected else ("unrecognized_response" if not accepted else None),
            "note":"Solo lectura: no se muestran ni se almacenan datos de clientes."}
     except urlreq.HTTPError as exc:
         return {"connected":False,"http_status":exc.code,"reason":"http_error"}
