@@ -66,3 +66,16 @@ Se añadió `dispatch_ops.py` a main, con rutas autenticadas:
 Panel Telegram incorpora ver foto, buscar Botcake, confirmar, reintentar IA y estado.
 
 **NO habilitar envíos de WhatsApp aún.** `/dispatch/api/send/{id}` sigue devolviendo HTTP 501. Falta confirmar payload multimedia Botcake, ventana WhatsApp, pruebas de extremo a extremo y durabilidad del almacenamiento. Mover fotos a almacenamiento persistente privado con estrategia de backups y retención antes de producción. No guardar secretos en git.
+
+## Prueba de envío multimedia Botcake (2026-10)
+El envío de prueba usa `POST /api/public_api/v1/pages/{page_id}/flows/send_content` con mensaje `image` y URL HTTPS de una imagen genérica. **No manda ningún ticket ni datos de clientes**.
+
+Configurar `DISPATCH_TEST_WHATSAPP` en Render: **solo el número personal autorizado** con código país, dígitos únicamente (no el número de empresa). No se necesita enviar ese número por el chat.
+
+La imagen es un patrón público sin información sensible en `/dispatch/test-image.png`. Opcionalmente `DISPATCH_TEST_IMAGE_URL` permite sustituirla por otra URL de PNG/JPG pública sin parámetros.
+
+En la Mini App se hace `Preparar envío de prueba` y luego `CONFIRMAR Y ENVIAR UNA IMAGEN DE PRUEBA`. El servidor restringe el destinatario al número configurado, la aprobación dura 5 minutos y solo permite un intento por aprobación. La aprobación y resultado se registran en la base de datos persistente.
+
+**Precaución:** respuesta `success: true` solo significa que Botcake aceptó la solicitud; debe comprobarse la recepción real en WhatsApp. Si hay timeout o error ambiguo NO repetir antes de verificar recepción. Hay que verificar ventana de atención WhatsApp y restricciones de plantillas. No hay envíos de tickets ni por lotes habilitados.
+
+La verificación previa del cliente con historial no confirma identidad ni titularidad del número. El operador debe confirmar que el número de prueba le pertenece y asumir el envío con consentimiento explícito.
