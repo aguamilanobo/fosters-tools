@@ -18,8 +18,8 @@ def test_png():
         for x in range(width):
             black=x<6 or x>=width-6 or y<6 or y>=height-6 or (70<y<140 and (x//14+y//14)%2==0)
             row.extend((28,28,28) if black else (250,250,250))
-        chunks.append(b"\\x00"+bytes(row))
-    return b"\\x89PNG\\r\\n\\x1a\\n"+png_chunk(b"IHDR",struct.pack(">IIBBBBB",width,height,8,2,0,0,0))+png_chunk(b"IDAT",zlib.compress(b"".join(chunks),6))+png_chunk(b"IEND",b"")
+        chunks.append(b"\x00"+bytes(row))
+    return b"\x89PNG\r\n\x1a\n"+png_chunk(b"IHDR",struct.pack(">IIBBBBB",width,height,8,2,0,0,0))+png_chunk(b"IDAT",zlib.compress(b"".join(chunks),6))+png_chunk(b"IEND",b"")
 
 @router.get("/dispatch/test-image.png")
 def test_image():
@@ -81,9 +81,18 @@ async def test_confirm(request:Request):
        headers={"access-token":token,"Content-Type":"application/json","Accept":"application/json"})
     status="unknown"
     response_code=""
+    provider_status=None
+    provider_error_type=None
+    provider_error_code=None
     try:
         with urlreq.urlopen(req,timeout=20) as res:
             data=json.loads(res.read(20000))
+        if isinstance(data,dict):
+            provider_status=str(data.get("status_code"))[:30] if data.get("status_code") is not None else None
+            err=data.get("error")
+            provider_error_type=type(err).__name__ if err is not None else None
+            if isinstance(err,dict):
+                provider_error_code=str(err.get("code"))[:30] if err.get("code") is not None else None
         if isinstance(data,dict) and data.get("success") is True:
             status="accepted"
         else:
@@ -98,5 +107,6 @@ async def test_confirm(request:Request):
         conn.execute("UPDATE dispatch_test_sends SET status=?,response_code=? WHERE id=?",
            (status,response_code,attempt_id))
     return {"result":status,"attempt_id":attempt_id,"error_code":response_code,
+     "provider_status":provider_status,"provider_error_type":provider_error_type,"provider_error_code":provider_error_code,
      "delivery_confirmed":False,
      "note":"Aceptado significa aceptado por Botcake, NO entregado en WhatsApp. No reintentar automáticamente si es desconocido."}
