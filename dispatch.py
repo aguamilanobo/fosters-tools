@@ -480,7 +480,7 @@ async def dispatch_botcake_test_contact(request:Request, payload:DispatchTestPho
     page=os.getenv("DISPATCH_BOTCAKE_PAGE_ID","").strip()
     if not token or not re.fullmatch(r"[A-Za-z0-9_-]{5,100}",page):
         raise HTTPException(503,"Configuración de Botcake incompleta")
-    digits=re.sub(r"\\D","",payload.phone)
+    digits=re.sub(r"[^0-9]","",payload.phone)
     if not 8 <= len(digits) <= 15:
         raise HTTPException(400,"Número internacional inválido")
     candidate="wa_"+digits
