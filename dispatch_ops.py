@@ -146,3 +146,40 @@ async def ops_summary(request:Request):
            "phone_last4":str(ve.get("phone") or ex.get("phone") or "")[-4:],
            "carrier":ex.get("carrier"),"created_at":r["created_at"]})
     return {"tickets":items,"send_enabled":False}
+
+class BulkLookupInput(BaseModel):
+    ticket_ids: list[int]
+
+@router.post("/dispatch/ops/bulk-lookup")
+async def bulk_lookup(request:Request,payload:BulkLookupInput):
+    """Explicit, bounded read-only lookup. Never sends messages or approves matches."""
+    actor=authorized(request)
+    ids=list(dict.fromkeys(payload.ticket_ids))
+    if not ids or len(ids)>10: raise HTTPException(400,"Elegí entre 1 y 10 tickets")
+    results=[]
+    for ticket_id in ids:
+        item={"ticket_id":ticket_id,"identity_verified":False,"sent":False}
+        try:
+            t=own(ticket_id)
+            if t["status"] not in ("needs_review","approved_not_sent"):
+                item["status"]="not_ready"
+            else:
+                extracted=json.loads(t["extracted"])
+                verified=json.loads(t["verified"])
+                phone=number(verified.get("phone") or extracted.get("phone"))
+                psid="wa_"+phone
+                result=botcake(psid)
+                item.update({"status":"candidate_found","candidate_psid":psid,
+                     "history_entries":result["history_count"],"name_on_ticket":extracted.get("recipient_name"),
+                     "approved":t["status"]=="approved_not_sent"})
+                with db() as conn:
+                    audit(conn,ticket_id,"bulk_candidate_lookup",actor,
+                        {"psid_hash":hashlib.sha256(psid.encode()).hexdigest()[:16]})
+        except HTTPException as ex:
+            item.update({"status":"requires_review","reason":str(ex.detail)[:100]})
+        except Exception as ex:
+            item.update({"status":"lookup_error"})
+            print("[DISPATCH] bulk lookup error",type(ex).__name__)
+        results.append(item)
+    return {"results":results,"sent":False,"automatic_approval":False,
+            "warning":"La existencia de historial no verifica el destinatario. Revisar cada coincidencia."}
