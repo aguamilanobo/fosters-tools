@@ -53,3 +53,16 @@ Los endpoints de revisión aceptan `X-Telegram-Init-Data` válido y usuario en `
 - Verificar extracción con tickets de varios transportes, manejo de nombre remitente/destinatario, privacidad y consistencia.
 - Implementar cola de envíos con idempotencia y comprobantes, aprobación humana y registro delivery.
 - Configurar el botón Mini App en BotFather con `https://fosters-tools.onrender.com/dispatch` (HTTPS).
+
+
+## Actualización operativa 2026-10-09
+Se añadió `dispatch_ops.py` a main, con rutas autenticadas:
+- POST `/dispatch/ops/lookup/{id}`: toma el teléfono del ticket, normaliza a dígitos, consulta historial mediante PSID `wa_...` (solo lectura). **Un historial existente no verifica nombre ni pedido.**
+- POST `/dispatch/ops/confirm/{id}`: exige teléfono, nombre y referencia de pedido, consulta que Botcake acepte PSID, guarda aprobación/auditoría sin enviar.
+- POST `/dispatch/ops/retry-vision/{id}`: nueva extracción con IA para fotos existentes, excepto tickets aprobados o procesándose.
+- POST `/dispatch/ops/health`: muestra ruta y avisa si es almacenamiento temporal.
+- POST `/dispatch/ops/audit/{id}`: historial de acciones.
+- POST `/dispatch/ops/summary`: resumen limitado a 100 tickets.
+Panel Telegram incorpora ver foto, buscar Botcake, confirmar, reintentar IA y estado.
+
+**NO habilitar envíos de WhatsApp aún.** `/dispatch/api/send/{id}` sigue devolviendo HTTP 501. Falta confirmar payload multimedia Botcake, ventana WhatsApp, pruebas de extremo a extremo y durabilidad del almacenamiento. Mover fotos a almacenamiento persistente privado con estrategia de backups y retención antes de producción. No guardar secretos en git.
