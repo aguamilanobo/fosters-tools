@@ -1,7 +1,7 @@
 """Controlled Botcake media send: test-only, explicit operator confirmation, one attempt per approval."""
-import os, re, json, time, secrets, sqlite3
+import os, re, json, time, secrets, sqlite3, struct, zlib
 from urllib import request as ur, error as ue
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Response
 from pydantic import BaseModel
 from dispatch import db, authorized, audit
 
@@ -16,7 +16,7 @@ def setup(conn):
 
 def config():
     number=re.sub("[^0-9]","",os.getenv("DISPATCH_TEST_WHATSAPP",""))
-    media_url=os.getenv("DISPATCH_TEST_IMAGE_URL","").strip()
+    media_url=os.getenv("DISPATCH_TEST_IMAGE_URL","").strip() or (os.getenv("DISPATCH_PUBLIC_URL","https://fosters-tools.onrender.com").rstrip("/")+"/dispatch/test-image.png")
     page=os.getenv("DISPATCH_BOTCAKE_PAGE_ID","").strip()
     token=os.getenv("DISPATCH_BOTCAKE_TOKEN","").strip()
     if not (8<=len(number)<=15 and media_url.startswith("https://")
@@ -95,3 +95,27 @@ async def status(request:Request):
         setup(conn)
         row=conn.execute("SELECT status,created_at,attempted_at FROM dispatch_send_tests ORDER BY created_at DESC LIMIT 1").fetchone()
     return {"latest_test":dict(row) if row else None,"bulk_send_enabled":False,"real_ticket_send_enabled":False}
+
+@router.get("/dispatch/test-image.png")
+def test_image():
+    """Public, nonpersonal graphic for one-off integration testing. No customer info."""
+    width,height=512,256
+    pixels=[]
+    for y in range(height):
+        line=bytearray()
+        for x in range(width):
+            if x<12 or x>=500 or y<12 or y>=244:
+                line.extend((20,20,20))
+            elif 40<x<472 and 56<y<200:
+                line.extend((235,235,230))
+            elif x<256:
+                line.extend((35,62,92))
+            else:
+                line.extend((65,110,150))
+        pixels.append(b"\\x00"+bytes(line))
+    compressed=zlib.compress(b"".join(pixels),9)
+    def chunk(label,data):
+        return struct.pack(">I",len(data))+label+data+struct.pack(">I",zlib.crc32(label+data)&0xffffffff)
+    png=(b"\\x89PNG\\r\\n\\x1a\\n"+chunk(b"IHDR",struct.pack(">IIBBBBB",width,height,8,2,0,0,0))
+         +chunk(b"IDAT",compressed)+chunk(b"IEND",b""))
+    return Response(content=png,media_type="image/png",headers={"Cache-Control":"public, max-age=3600"})
