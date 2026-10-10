@@ -275,7 +275,7 @@ def dashboard():
     <title>Fosters Dispatch</title><script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>body{background:#0b0b0b;color:#f3f1ea;font:15px Arial;margin:0}.wrap{max-width:760px;margin:auto;padding:22px}h1{font:24px Georgia;letter-spacing:2px}.card{background:#191919;border:1px solid #333;border-radius:14px;padding:18px;margin:12px 0}input{background:#111;color:white;border:1px solid #555;border-radius:6px;padding:10px;width:100%;box-sizing:border-box;margin:4px 0 12px}button{background:#f0eede;color:#111;border:0;border-radius:8px;padding:11px 15px;font-weight:bold}.muted{color:#aaa}.alert{color:#edbe75}.err{color:#fa9999}small{color:#aaa}</style></head>
     <body><div class="wrap"><h1>FOSTERS DISPATCH</h1><p class="alert">Modo seguro · revisión manual · envío WhatsApp todavía deshabilitado</p>
-    <button onclick="checkPancake()">Comprobar conexión Pancake</button> <button onclick="checkBotcake()">Probar conexión Botcake</button> <button onclick="checkBearer()">Probar token Bearer</button><p id="pancakeResult" class="muted"></p><div id="list">Cargando tickets…</div><p id="msg"></p></div>
+    <button onclick="checkPancake()">Comprobar conexión Pancake</button> <button onclick="checkBotcake()">Probar conexión Botcake</button> <button onclick="testContact()">Probar contacto propio</button> <button onclick="checkBearer()">Probar token Bearer</button><p id="pancakeResult" class="muted"></p><div id="list">Cargando tickets…</div><p id="msg"></p></div>
     <script>
     const tg=window.Telegram&&Telegram.WebApp;if(tg){tg.ready();tg.expand()}
     const auth=tg?tg.initData:'';
@@ -284,6 +284,7 @@ def dashboard():
     async function load(){try{const res=await api('/dispatch/api/list');document.getElementById('list').innerHTML=res.tickets.map(t=>{const x=Object.assign({},t.extracted,t.verified);return '<div class="card"><b>#'+t.id+' · '+esc(t.status)+'</b><p class="muted">Ticket recibido '+new Date(t.created_at*1000).toLocaleString()+'</p>'+['recipient_name','phone','destination','carrier','tracking_number','matched_order'].map(k=>'<label><small>'+k+'</small><input data-id="'+t.id+'" data-field="'+k+'" value="'+esc(k==='matched_order'?t.matched_order:x[k])+'"></label>').join('')+'<button onclick="approve('+t.id+')">Confirmar asociación (NO envía)</button></div>'}).join('')||'<p>No hay tickets. Enviá fotos al bot.</p>'}catch(e){document.getElementById('msg').textContent=e.message}}
     async function approve(id){const p={};document.querySelectorAll('[data-id="'+id+'"]').forEach(el=>p[el.dataset.field]=el.value);try{await api('/dispatch/api/review/'+id,p);document.getElementById('msg').textContent='Asociación guardada. No se envió ningún mensaje.';load()}catch(e){document.getElementById('msg').textContent=e.message}}
     async function checkBearer(){const el=document.getElementById('pancakeResult');el.textContent='Verificando autenticación Bearer…';try{const d=await api('/dispatch/api/pancake/check-bearer');el.textContent='Bearer · HTTP '+(d.http_status||'?')+' · API success: '+String(d.api_success)+' · error_code: '+(d.api_error_code||'-')+' · claves: '+(d.response_keys||[]).join(', ')+(d.valid?' · CONECTADO':' · SIN VALIDAR')}catch(e){el.textContent='Error: '+e.message}}
+    async function testContact(){const phone=prompt('Número personal de prueba con código país, por ejemplo +549...');if(!phone)return;const el=document.getElementById('pancakeResult');el.textContent='Consultando identificador, sin enviar mensajes…';try{const d=await api('/dispatch/api/botcake/test-contact',{phone});el.textContent='Contacto prueba: '+(d.candidate_id||'-')+' · HTTP '+(d.http_status||'-')+' · API success '+String(d.api_success)+' · registros '+String(d.history_entries)+' · Identidad NO verificada. '+(d.reason||'')}catch(e){el.textContent='Error: '+e.message}}
     async function checkBotcake(){const el=document.getElementById('pancakeResult');el.textContent='Consultando Botcake, solo lectura…';try{const d=await api('/dispatch/api/botcake/check');el.textContent=d.connected?'Botcake API conectada · consulta de palabras clave OK · SOLO LECTURA':'Botcake pendiente · '+(d.reason||'respuesta no validada')+' · HTTP '+(d.http_status||'?')+' · tipo respuesta '+(d.response_type||'-')+' · claves '+(d.response_keys||[]).join(',')+' · status_code '+(d.status_code||'-')+' · error tipo '+(d.api_error_kind||'-')+' · error código '+(d.api_error_code_nested||'-')+' · campos error '+(d.error_fields||[]).join(',')+' · success '+String(d.api_success)+' · código '+(d.api_error_code||'-')+' · token '+(d.token_present===false?'falta':'configurado')+' · página '+(d.page_present===false?'falta':'configurada')}catch(e){el.textContent='Error Botcake: '+e.message}}
     async function checkPancake(){const el=document.getElementById('pancakeResult');el.textContent='Consultando Pancake (solo lectura)…';try{const d=await api('/dispatch/api/pancake/check');el.textContent=d.connected?'Conexión correcta. Conversaciones en muestra: '+d.conversations_in_sample:'HTTP '+(d.http_status||'?')+' · Estructura: '+(d.response_type||'?')+' · Claves: '+(d.response_keys||[]).join(', ')+' · data: '+(d.data_type||'?')+' · success: '+String(d.api_success)+' · error_code: '+(d.api_error_code||'no disponible')}catch(e){el.textContent='Error: '+e.message}}
     load();setInterval(load,20000);
@@ -466,3 +467,41 @@ async def dispatch_botcake_check(request:Request):
     except Exception as exc:
         print("[DISPATCH] Botcake diagnostic error:",type(exc).__name__)
         return {"connected":False,"reason":"network_or_response_error"}
+
+class DispatchTestPhone(BaseModel):
+    phone: str
+
+
+@router.post("/dispatch/api/botcake/test-contact")
+async def dispatch_botcake_test_contact(request:Request, payload:DispatchTestPhone):
+    """Read-only candidate lookup, never treats a successful response as verified identity."""
+    authorized(request)
+    token=os.getenv("DISPATCH_BOTCAKE_TOKEN","").strip()
+    page=os.getenv("DISPATCH_BOTCAKE_PAGE_ID","").strip()
+    if not token or not re.fullmatch(r"[A-Za-z0-9_-]{5,100}",page):
+        raise HTTPException(503,"Configuración de Botcake incompleta")
+    digits=re.sub(r"\\D","",payload.phone)
+    if not 8 <= len(digits) <= 15:
+        raise HTTPException(400,"Número internacional inválido")
+    candidate="wa_"+digits
+    endpoint="https://botcake.io/api/public_api/v1/pages/"+urlparse.quote(page,safe="")+"/customer/"+urlparse.quote(candidate,safe="")
+    req=urlreq.Request(endpoint,headers={"access-token":token,"Accept":"application/json",
+                "User-Agent":"FostersDispatch/0.1"},method="GET")
+    try:
+        with urlreq.urlopen(req,timeout=20) as resp:
+            body=json.loads(resp.read(256*1024))
+            status=resp.status
+        success=body.get("success") if isinstance(body,dict) else None
+        histories=body.get("histories") if isinstance(body,dict) else None
+        return {"http_status":status,"api_success":success,
+                "candidate_id":candidate,
+                "history_entries":len(histories) if isinstance(histories,list) else None,
+                "response_keys":list(body.keys())[:10] if isinstance(body,dict) else [],
+                "identity_verified":False,
+                "note":"Este endpoint devuelve historial de operaciones por PSID; no confirma identidad del destinatario. No se envió ningún mensaje."}
+    except urlreq.HTTPError as exc:
+        return {"http_status":exc.code,"candidate_id":candidate,"identity_verified":False,
+                "reason":"botcake_http_error"}
+    except Exception as exc:
+        print("[DISPATCH] Botcake test contact:",type(exc).__name__)
+        return {"candidate_id":candidate,"identity_verified":False,"reason":"network_or_response_error"}
