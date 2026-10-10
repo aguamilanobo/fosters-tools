@@ -60,6 +60,8 @@ async def test_confirm(request:Request):
     body=await request.json()
     challenge=str(body.get("challenge",""))
     consent=body.get("confirmed") is True
+    mode=body.get("mode","text")
+    if mode not in ("text","image"):raise HTTPException(400,"Tipo de prueba inválido")
     if not consent or len(challenge)>100:raise HTTPException(400,"Confirmación requerida")
     dest=test_target()
     h=hashlib.sha256(challenge.encode()).hexdigest()
@@ -75,7 +77,8 @@ async def test_confirm(request:Request):
     if not re.fullmatch("[A-Za-z0-9_-]{5,100}",page):raise HTTPException(503,"Canal Botcake no válido")
     token=os.getenv("DISPATCH_BOTCAKE_TOKEN","")
     public_url=os.getenv("DISPATCH_PUBLIC_URL","https://fosters-tools.onrender.com").rstrip("/")
-    payload={"psid":"wa_"+dest,"data":{"version":"v2","content":{"messages":[{"type":"image","url":public_url+"/dispatch/test-image.png"}]}}}
+    msg={"type":"text","text":"FOSTERS DISPATCH: mensaje de prueba autorizado. No requiere respuesta."} if mode=="text" else {"type":"image","url":public_url+"/dispatch/test-image.png"}
+    payload={"psid":"wa_"+dest,"data":{"version":"v2","content":{"messages":[msg],"actions":[],"quick_replies":[]}}}
     req=urlreq.Request("https://botcake.io/api/public_api/v1/pages/"+page+"/flows/send_content",
        data=json.dumps(payload).encode(),method="POST",
        headers={"access-token":token,"Content-Type":"application/json","Accept":"application/json"})
@@ -85,6 +88,7 @@ async def test_confirm(request:Request):
     provider_error_type=None
     provider_error_code=None
     provider_response_keys=[]
+    provider_error_summary=None
     try:
         with urlreq.urlopen(req,timeout=20) as res:
             data=json.loads(res.read(20000))
@@ -93,8 +97,13 @@ async def test_confirm(request:Request):
             provider_status=str(data.get("status_code"))[:30] if data.get("status_code") is not None else None
             err=data.get("error")
             provider_error_type=type(err).__name__ if err is not None else None
+            if isinstance(err,str):
+                provider_error_summary=err[:160] if "token" not in err.lower() and "eyj" not in err.lower() else "error oculto"
             if isinstance(err,dict):
                 provider_error_code=str(err.get("code"))[:30] if err.get("code") is not None else None
+        if isinstance(data,dict) and isinstance(data.get("message"),str):
+            m=data["message"]
+            provider_error_summary=m[:160] if "token" not in m.lower() and "eyj" not in m.lower() else "error oculto"
         if isinstance(data,dict) and data.get("success") is True:
             status="accepted"
         else:
@@ -111,5 +120,6 @@ async def test_confirm(request:Request):
     return {"result":status,"attempt_id":attempt_id,"error_code":response_code,
      "provider_status":provider_status,"provider_error_type":provider_error_type,"provider_error_code":provider_error_code,
      "provider_response_keys":provider_response_keys,
+     "provider_error_summary":provider_error_summary,"test_mode":mode,
      "delivery_confirmed":False,
      "note":"Aceptado significa aceptado por Botcake, NO entregado en WhatsApp. No reintentar automáticamente si es desconocido."}
