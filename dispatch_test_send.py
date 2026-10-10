@@ -84,10 +84,12 @@ async def test_confirm(request:Request):
     provider_status=None
     provider_error_type=None
     provider_error_code=None
+    provider_response_keys=[]
     try:
         with urlreq.urlopen(req,timeout=20) as res:
             data=json.loads(res.read(20000))
         if isinstance(data,dict):
+            provider_response_keys=list(data.keys())[:12]
             provider_status=str(data.get("status_code"))[:30] if data.get("status_code") is not None else None
             err=data.get("error")
             provider_error_type=type(err).__name__ if err is not None else None
@@ -108,5 +110,6 @@ async def test_confirm(request:Request):
            (status,response_code,attempt_id))
     return {"result":status,"attempt_id":attempt_id,"error_code":response_code,
      "provider_status":provider_status,"provider_error_type":provider_error_type,"provider_error_code":provider_error_code,
+     "provider_response_keys":provider_response_keys,
      "delivery_confirmed":False,
      "note":"Aceptado significa aceptado por Botcake, NO entregado en WhatsApp. No reintentar automáticamente si es desconocido."}
