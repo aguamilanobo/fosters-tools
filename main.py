@@ -17,6 +17,8 @@ from dispatch import router as dispatch_router
 app.include_router(dispatch_router)
 from dispatch_ops import router as dispatch_ops_router
 app.include_router(dispatch_ops_router)
+from dispatch_test_send import router as dispatch_test_send_router
+app.include_router(dispatch_test_send_router)
 from dispatch_send_test import router as dispatch_send_test_router
 app.include_router(dispatch_send_test_router)
 
