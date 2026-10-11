@@ -17,6 +17,8 @@ from dispatch import router as dispatch_router
 app.include_router(dispatch_router)
 from dispatch_ops import router as dispatch_ops_router
 app.include_router(dispatch_ops_router)
+from fosters_products import router as fosters_products_router, PRODUCTS as FOSTERS_PRODUCTS, product_key as fosters_product_key
+app.include_router(fosters_products_router)
 from dispatch_test_send import router as dispatch_test_send_router
 app.include_router(dispatch_test_send_router)
 
@@ -107,46 +109,16 @@ FOSTERS_PRICE_BS = 300
 FOSTERS_COST_BS = 110
 PANCAKE_WAREHOUSE_ID = "c52e67ad-d9d0-4276-abe4-e0c9f1f7d2da"
 
+# Legacy URLs for historic Henley photos only. Never reuse for the new shirt.
 FOSTERS_CATALOG = {
-    "negro": {
-        "name": "Negro",
-        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/ae053b22c7ea2916219184518d0e10a1942790d1.png",
-        "sizes": ["M", "L", "XL"],
-    },
-    "azul": {
-        "name": "Azul",
-        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/0a3d94035bd27b49047864197f5c3724017ac0fe.png",
-        "sizes": ["M", "L", "XL", "XXL"],
-    },
-    "beige": {
-        "name": "Beige",
-        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/bf954fea7e166081bfcec3c599301ca8e23e855f.png",
-        "sizes": ["M", "L", "XL"],
-    },
-    "blanco": {
-        "name": "Blanco",
-        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/3d7da6940f4817961c6f58400d329ac7c66874d9.png",
-        "sizes": ["M", "L", "XL"],
-    },
-    "celeste": {
-        "name": "Celeste",
-        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/5d9217a7149d62bcfeff3edbaf83091bfc22f661.png",
-        "sizes": ["M", "L", "XL"],
-    },
-    "verde": {
-        "name": "Verde",
-        "image_url": "https://content.pancake.vn/user-content2.botcake.vn/2026/9/9/288305bcae4d8fc5471e78bd9914fdd2b3b49840.png",
-        "sizes": ["M", "L", "XL"],
-    },
+    "negro":{"name":"Negro","sizes":["M","L","XL"],"image_url":None},
+    "blanco":{"name":"Blanco","sizes":["M","L","XL"],"image_url":None},
+    "azul":{"name":"Azul","sizes":["M","L","XL"],"image_url":None},
+    "celeste":{"name":"Celeste","sizes":["M","L","XL"],"image_url":None},
+    "plomo":{"name":"Plomo","sizes":["M","L","XL"],"image_url":None},
+    "beige":{"name":"Beige","sizes":["M","L","XL"],"image_url":None}
 }
-
-COLOR_ALIASES = {
-    "negra": "negro", "negro": "negro",
-    "navy": "azul", "azul marino": "azul", "marino": "azul", "azul": "azul",
-    "crema": "beige", "arena": "beige", "beige": "beige",
-    "blanca": "blanco", "blanco": "blanco",
-    "celeste": "celeste", "verde": "verde",
-}
+COLOR_ALIASES={"negra":"negro","blanca":"blanco","navy":"azul","azul marino":"azul","marino":"azul","crema":"beige","arena":"beige","gris":"plomo","gris plomo":"plomo"}
 
 
 # -----------------------------------------------------------------------------
@@ -287,8 +259,9 @@ def fosters_payment_summary(data: FostersPaymentSummaryRequest):
         }
 
     items = str(data.items).strip()
-    if not items.lower().startswith("henley"):
-        items = f"Henley {items}"
+    # Preserve the actual requested product; never force a Henley prefix.
+    if not any(term in items.lower() for term in ("henley","camisa")):
+        items = f"Camisa lino brasilero {items}"
 
     destination = str(data.department).strip()
     if data.zone_or_city and str(data.zone_or_city).strip():
@@ -727,19 +700,9 @@ async def pancake_agua_webhook(request: Request):
 # -----------------------------------------------------------------------------
 
 @app.get("/catalog")
-def get_catalog(color: Optional[str] = None):
-    if color:
-        normalized = COLOR_ALIASES.get(color.strip().lower(), color.strip().lower())
-        item = FOSTERS_CATALOG.get(normalized)
-        if not item:
-            return {"found":False,"color":color,"available_colors":[x["name"] for x in FOSTERS_CATALOG.values()]}
-        return {"found":True,"product":"Henley Fosters","color":item["name"],"sizes":item["sizes"],"image_url":item["image_url"]}
-    return {
-        "found":True,
-        "product":"Henley Fosters",
-        "price_bs":FOSTERS_PRICE_BS,
-        "colors":[{"name":x["name"],"sizes":x["sizes"],"image_url":x["image_url"]} for x in FOSTERS_CATALOG.values()],
-    }
+def get_catalog(color: Optional[str] = None, product: Optional[str] = None):
+    from fosters_products import product as get_product
+    return get_product(product=product,color=color)
 
 
 # -----------------------------------------------------------------------------
@@ -747,49 +710,30 @@ def get_catalog(color: Optional[str] = None):
 # -----------------------------------------------------------------------------
 
 def build_pancake_variations():
-    variations = []
-    for color_key, color_data in FOSTERS_CATALOG.items():
-        for size in color_data["sizes"]:
-            variation_id = f"henley-{color_key}-{size.lower()}"
-            variations.append({
-                "api_variation_id": variation_id,
-                "fields": [
-                    {"name":"Color","value":color_data["name"],"id":""},
-                    {"name":"Size","value":size,"id":""},
-                ],
-                "images": [color_data["image_url"]],
-                "last_imported_price": FOSTERS_PRICE_BS,
-                "retail_price": FOSTERS_PRICE_BS,
-                "weight": 0,
-                "barcode": variation_id.upper(),
-                "custom_id": variation_id,
-                "permalink": f"https://fosters-tools.onrender.com/catalog?color={color_key}",
-            })
-    return variations
+    # No fake stock quantities and no recycled Henley photos.
+    result=[]
+    for color_key, value in FOSTERS_CATALOG.items():
+        for size in value["sizes"]:
+            vid=f"brasilero-{color_key}-{size.lower()}"
+            result.append({"api_variation_id":vid,
+             "fields":[{"name":"Color","value":value["name"],"id":""},{"name":"Size","value":size,"id":""}],
+             "images":[],"last_imported_price":300,"retail_price":300,
+             "weight":0,"barcode":vid.upper(),"custom_id":vid,
+             "permalink":"https://fosters-tools.onrender.com/catalog?product=camisa-lino-brasilero&color="+color_key})
+    return result
 
 @app.get("/products")
-def get_products(
-    page: int = Query(1, ge=1),
-    pageSize: int = Query(50, ge=1, le=100),
-):
-    product = {
-        "name": "Henley Fosters",
-        "id": "fosters-henley",
-        "permalink": "https://fosters-tools.onrender.com/catalog",
-        "product_attributes": [
-            {"name":"Color","values":[x["name"] for x in FOSTERS_CATALOG.values()],"id":""},
-            {"name":"Size","values":["M","L","XL","XXL"],"id":""},
-        ],
-        "variations": build_pancake_variations(),
-        "weight": 1,
-        "custom_id": "FOSTERS-HENLEY",
-        "variations_warehouses": [],
-    }
-    products = [{"product": product}]
-    start = (page - 1) * pageSize
-    end = start + pageSize
-    return {"data": products[start:end], "total": len(products)}
-
+def get_products(page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=100)):
+    product={"name":"Camisa Fosters de lino brasilero","id":"fosters-camisa-lino-brasilero",
+      "permalink":"https://fosters-tools.onrender.com/catalog?product=camisa-lino-brasilero",
+      "product_attributes":[
+        {"name":"Color","values":[v["name"] for v in FOSTERS_CATALOG.values()],"id":""},
+        {"name":"Size","values":["M","L","XL"],"id":""}],
+      "variations":build_pancake_variations(),"weight":1,
+      "custom_id":"FOSTERS-LINO-BRASILERO","variations_warehouses":[]}
+    items=[{"product":product}]
+    return {"data":items[(page-1)*pageSize:page*pageSize],"total":len(items),
+       "stock_verified":False}
 
 @app.get("/products-test")
 def get_products_test(
@@ -843,7 +787,7 @@ def get_products_test(
 class HandoffNotifyRequest(BaseModel):
     customer_name: Optional[str] = None
     phone: Optional[str] = None
-    product: Optional[str] = "Henley"
+    product: Optional[str] = "Camisa lino brasilero"
     color: Optional[str] = None
     size: Optional[str] = None
     quantity: Optional[int] = 1
