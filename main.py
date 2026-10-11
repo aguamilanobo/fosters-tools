@@ -80,7 +80,7 @@ def root():
                 <div class="card"><h3>Size Recommendation</h3><span class="endpoint">GET /recommend-size</span><p>Recommends the ideal Fosters size based on height and weight.</p></div>
                 <div class="card"><h3>Order Preparation</h3><span class="endpoint">POST /prepare-order</span><p>Structures product, color, size and quantity before shipping.</p></div>
                 <div class="card"><h3>Shipping Preparation</h3><span class="endpoint">POST /prepare-shipping</span><p>Determines the correct shipping flow.</p></div>
-                <div class="card"><h3>Product Catalog</h3><span class="endpoint">GET /catalog</span><p>Returns current Henley colors, sizes and images.</p></div>
+                <div class="card"><h3>Product Catalog</h3><span class="endpoint">GET /catalog</span><p>Returns current Fosters products, sizes and availability.</p></div>
                 <div class="card"><h3>Fosters Payment Summary</h3><span class="endpoint">POST /fosters/payment-summary</span><p>Builds the final customer-facing order summary before payment.</p></div>
                 <div class="card"><h3>Pancake Product Sync</h3><span class="endpoint">GET /products?page=1&pageSize=50</span><p>Paginated product feed for Pancake.</p></div>
                 <div class="card"><h3>Pancake Sync Test</h3><span class="endpoint">GET /products-test?page=1&pageSize=50</span><p>Minimal one-product feed with warehouse stock for Pancake synchronization testing.</p></div>
@@ -1661,7 +1661,7 @@ def decide_next_action(data: NextActionRequest):
         return {"next_action":"recommend_size","priority":"high","should_handoff":False,"reason":"size_help_requested","missing_fields":["height_cm","weight_kg"],"message_hint":"Pedir altura y peso si todavía no fueron proporcionados."}
 
     if data.asks_for_catalog and not data.color:
-        return {"next_action":"send_catalog","priority":"normal","should_handoff":False,"reason":"catalog_requested","missing_fields":[],"message_hint":"Usar get_fosters_catalog y enviar todas las imágenes."}
+        return {"next_action":"send_catalog","priority":"normal","should_handoff":False,"reason":"catalog_requested","missing_fields":[],"message_hint":"Consultar /fosters/products; compartir SOLO las fotos reales de la camisa de lino brasilero cargadas en Botcake. No ofrecer colores retirados ni Henley sin stock."}
 
     if data.asks_for_discount:
         if not data.quantity or data.quantity <= 1:
