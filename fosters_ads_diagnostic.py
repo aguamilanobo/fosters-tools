@@ -73,6 +73,12 @@ async def ads_diagnostic(request:Request):
                          "Verificar FOSTERS_PANCAKE_PAGE_ID; un ID WABA puede no coincidir con el ID de página usado por esta API"],
                 "page_id":page,"mutated":False}
     brief=summarize(data)
-    return {"ready":status==200 and data.get("success") is not False,
+    err=data.get("error") if isinstance(data,dict) else None
+    safe_code=data.get("error_code") or data.get("code") if isinstance(data,dict) else None
+    if isinstance(err,dict): safe_code=safe_code or err.get("code")
+    safe_code=str(safe_code)[:32] if safe_code is not None else None
+    api_status=str(data.get("status_code"))[:32] if isinstance(data,dict) and data.get("status_code") is not None else None
+    ready=(status==200 and isinstance(data,dict) and data.get("success") is not False and (brief["sample_count"]>0 or isinstance(data.get("conversations"),list)))
+    return {"ready":ready,"api_error_code":safe_code,"api_status_code":api_status,"error_type":type(err).__name__ if err is not None else None,
             "http_status":status,"api_success":data.get("success"),"page_id":page,
             "token_configured":True,"mutated":False,**brief}
