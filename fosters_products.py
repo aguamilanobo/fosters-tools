@@ -7,7 +7,7 @@ import os, unicodedata
 
 router=APIRouter()
 SHARED_SIZES=["M","L","XL"]
-COLORS=["Negro","Blanco","Azul","Celeste","Plomo","Beige"]
+COLORS=["Negro","Blanco","Celeste","Plomo","Beige"]
 ALIASES={"negra":"Negro","negro":"Negro","blanca":"Blanco","blanco":"Blanco","azul":"Azul","navy":"Azul","azul marino":"Azul","celeste":"Celeste","plomo":"Plomo","gris":"Plomo","gris plomo":"Plomo","beige":"Beige","arena":"Beige","crema":"Beige"}
 SIZE_REFERENCE={"M":"65–77 kg aprox.","L":"78–87 kg aprox.","XL":"87–110 kg aprox."}
 PRODUCTS={
@@ -24,10 +24,10 @@ PRODUCTS={
  "henley":{
   "id":"henley","name":"Henley Fosters","material_label":"55% lino / 45% algodón",
   "closure":"Tres botones en el pecho",
-  "price_bs":300,"status":"paused","colors":["Negro","Blanco","Azul","Celeste","Beige"],
-  "sizes":SHARED_SIZES,"inventory_status":"paused_pending_restock","image_urls":{},
+  "price_bs":300,"status":"active","colors":["Negro","Blanco","Azul","Celeste","Beige"],
+  "sizes":SHARED_SIZES,"inventory_status":"unverified","image_urls":{},
   "fit":"Horma clásica amplia","campaign_key":"henley",
-  "availability_note":"Ventas pausadas temporalmente hasta reposición; no prometer stock."
+  "availability_note":"Modelo reactivado; confirmar existencias por color y talle en Pancake antes de prometer stock."
  }
 }
 REMOVED_COLORS=["Verde","Marrón"]
@@ -36,6 +36,7 @@ def clean(value):
     return "".join(ch for ch in s if not unicodedata.combining(ch))
 def product_key(text):
     x=clean(text)
+    if x in ("lino_brasilero","lino-brasilero","camisa-lino-brasilero"): return "camisa-lino-brasilero"
     if any(k in x for k in ("henley","tres botones","3 botones")): return "henley"
     if any(k in x for k in ("brasilero","brasilera","botones completos","abotonadura completa","camisa","plomo")):return "camisa-lino-brasilero"
     return "camisa-lino-brasilero"
@@ -45,9 +46,9 @@ def card(key):
     return p
 def reply(key):
     p=PRODUCTS[key]
-    if p["status"]=="paused":
-        return "¡Hola! Las Henley Fosters están temporalmente pausadas por reposición de stock. Hoy tenemos como novedad nuestra camisa de lino brasilero con botones completos a 300 Bs. ¿Querés ver sus colores?"
-    return "¡Hola! Nuestra nueva camisa Fosters de lino brasilero cuesta 300 Bs. Tiene botones en todo el frente y viene en negro, blanco, azul, celeste, plomo y beige. Talles M, L y XL como referencia habitual (consultar stock por variante). ¿Qué talla y color buscás?"
+    if key=="henley":
+        return "¡Hola! Las Henley Fosters cuestan 300 Bs. Son de lino y algodón, con tres botones en el pecho. Colores negro, blanco, azul marino, celeste y beige. ¿Qué talle y color buscás?"
+    return "¡Hola! Nuestra nueva camisa Fosters de lino brasilero cuesta 300 Bs. Tiene botones en todo el frente y viene en negro, blanco, celeste, plomo y beige. Talles M, L y XL como referencia habitual (consultar stock por variante). ¿Qué talla y color buscás?"
 @router.get("/fosters/products")
 def products():
     return {"primary_product":"camisa-lino-brasilero","products":[card("camisa-lino-brasilero"),card("henley")],
