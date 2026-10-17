@@ -115,7 +115,6 @@ PANCAKE_WAREHOUSE_ID = "c52e67ad-d9d0-4276-abe4-e0c9f1f7d2da"
 FOSTERS_CATALOG = {
     "negro":{"name":"Negro","sizes":["M","L","XL"],"image_url":None},
     "blanco":{"name":"Blanco","sizes":["M","L","XL"],"image_url":None},
-    "azul":{"name":"Azul","sizes":["M","L","XL"],"image_url":None},
     "celeste":{"name":"Celeste","sizes":["M","L","XL"],"image_url":None},
     "plomo":{"name":"Plomo","sizes":["M","L","XL"],"image_url":None},
     "beige":{"name":"Beige","sizes":["M","L","XL"],"image_url":None}
