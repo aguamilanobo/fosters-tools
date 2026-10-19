@@ -262,7 +262,7 @@ def fosters_payment_summary(data: FostersPaymentSummaryRequest):
     items = str(data.items).strip()
     # Preserve the actual requested product; never force a Henley prefix.
     if not any(term in items.lower() for term in ("henley","camisa")):
-        items = f"Camisa lino brasilero {items}"
+        items = f"Henley {items}"
 
     destination = str(data.department).strip()
     if data.zone_or_city and str(data.zone_or_city).strip():
@@ -710,31 +710,37 @@ def get_catalog(color: Optional[str] = None, product: Optional[str] = None):
 # PANCAKE PRODUCT SYNC
 # -----------------------------------------------------------------------------
 
-def build_pancake_variations():
-    # No fake stock quantities and no recycled Henley photos.
+def build_pancake_variations(product_id):
+    from fosters_products import PRODUCTS
+    p=PRODUCTS[product_id]
     result=[]
-    for color_key, value in FOSTERS_CATALOG.items():
-        for size in value["sizes"]:
-            vid=f"brasilero-{color_key}-{size.lower()}"
-            result.append({"api_variation_id":vid,
-             "fields":[{"name":"Color","value":value["name"],"id":""},{"name":"Size","value":size,"id":""}],
+    for color in p["colors"]:
+        for size in p["sizes"]:
+            variant_id=(product_id+"-"+color+"-"+size).lower().replace(" ","-")
+            result.append({"api_variation_id":variant_id,
+             "fields":[{"name":"Color","value":color,"id":""},{"name":"Size","value":size,"id":""}],
              "images":[],"last_imported_price":300,"retail_price":300,
-             "weight":0,"barcode":vid.upper(),"custom_id":vid,
-             "permalink":"https://fosters-tools.onrender.com/catalog?product=camisa-lino-brasilero&color="+color_key})
+             "weight":0,"barcode":variant_id.upper(),"custom_id":variant_id,
+             "permalink":"https://fosters-tools.onrender.com/fosters/product?product="+product_id})
     return result
 
 @app.get("/products")
 def get_products(page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=100)):
-    product={"name":"Camisa Fosters de lino brasilero","id":"fosters-camisa-lino-brasilero",
-      "permalink":"https://fosters-tools.onrender.com/catalog?product=camisa-lino-brasilero",
-      "product_attributes":[
-        {"name":"Color","values":[v["name"] for v in FOSTERS_CATALOG.values()],"id":""},
-        {"name":"Size","values":["M","L","XL"],"id":""}],
-      "variations":build_pancake_variations(),"weight":1,
-      "custom_id":"FOSTERS-LINO-BRASILERO","variations_warehouses":[]}
-    items=[{"product":product}]
+    from fosters_products import PRODUCTS
+    items=[]
+    for product_id in ("henley","shorts-lino"):
+        p=PRODUCTS[product_id]
+        items.append({"product":{
+          "name":p["name"],"id":"fosters-"+product_id,
+          "permalink":"https://fosters-tools.onrender.com/fosters/product?product="+product_id,
+          "product_attributes":[
+           {"name":"Color","values":p["colors"],"id":""},
+           {"name":"Size","values":p["sizes"],"id":""}],
+          "variations":build_pancake_variations(product_id),
+          "weight":1,"custom_id":"FOSTERS-"+product_id.upper(),
+          "variations_warehouses":[]}})
     return {"data":items[(page-1)*pageSize:page*pageSize],"total":len(items),
-       "stock_verified":False}
+        "stock_verified":False,"images_verified":False}
 
 @app.get("/products-test")
 def get_products_test(
@@ -1662,7 +1668,7 @@ def decide_next_action(data: NextActionRequest):
         return {"next_action":"recommend_size","priority":"high","should_handoff":False,"reason":"size_help_requested","missing_fields":["height_cm","weight_kg"],"message_hint":"Pedir altura y peso si todavía no fueron proporcionados."}
 
     if data.asks_for_catalog and not data.color:
-        return {"next_action":"send_catalog","priority":"normal","should_handoff":False,"reason":"catalog_requested","missing_fields":[],"message_hint":"Consultar /fosters/products; compartir SOLO las fotos reales de la camisa de lino brasilero cargadas en Botcake. No ofrecer colores retirados ni Henley sin stock."}
+        return {"next_action":"send_catalog","priority":"normal","should_handoff":False,"reason":"catalog_requested","missing_fields":[],"message_hint":"Consultar /fosters/products y enviar fotos reales de Henley o shorts según el producto; nunca usar fotos de prendas ocultas."}
 
     if data.asks_for_discount:
         if not data.quantity or data.quantity <= 1:
