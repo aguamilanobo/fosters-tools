@@ -949,11 +949,15 @@ AGUA_CATALOG = {
     "alpargata": {
         "name": "Alpargatas",
         "price_bs": AGUA_ALPARGATA_PRICE_BS,
-        "status": "coming_soon",
-        "colors": [],
+        "status": "active",
+        "colors": ["Beige", "Ocre", "Chocolate", "Verde", "Azul Marino"],
         "sizes": ["40", "41", "42"],
-        "measurements": None,
-        "note": "Próximo ingreso desde Argentina. No ofrecer como disponible hasta confirmar stock.",
+        "measurements": {
+            "40": {"foot_length_cm": 25, "br_size": "38", "us_size": "7"},
+            "41": {"foot_length_cm": 26, "br_size": "39.5", "us_size": "8"},
+            "42": {"foot_length_cm": 27, "br_size": "40", "us_size": "8.5"},
+        },
+        "note": "Alpargatas activas. Confirmar stock real por color y talla en Pancake POS.",
     },
 }
 
@@ -1103,13 +1107,15 @@ def check_agua_stock(data: AguaStockRequest):
     requested_qty = max(data.quantity, 1)
 
     if product == "alpargata":
-        return {
-            "connected": True,
-            "available": False,
-            "status": "coming_soon",
-            "product": "alpargata",
-            "message": "Las alpargatas todavía no deben ofrecerse como disponibles hasta confirmar el ingreso.",
-        }
+        item = AGUA_CATALOG["alpargata"]
+        if data.color and data.color.strip().lower() not in [c.lower() for c in item["colors"]]:
+            return {"connected": True, "available": False, "status": "invalid_color",
+                    "product": "alpargata", "available_colors": item["colors"]}
+        if data.size and data.size.strip() not in item["sizes"]:
+            return {"connected": True, "available": False, "status": "invalid_size",
+                    "product": "alpargata", "available_sizes": item["sizes"]}
+        return {"connected": False, "available": None, "status": "stock_unverified",
+                "product": "alpargata", "message": "Producto activo. Confirmar existencias por color y talla en Pancake POS."}
 
     if product not in ("camisa", "short"):
         return {
@@ -1441,15 +1447,6 @@ def decide_agua_next_action(data: AguaNextActionRequest):
     if data.wants_to_buy:
         if not product:
             return {"next_action":"ask_product","priority":"normal","should_handoff":False,"reason":"missing_product","missing_fields":["product"]}
-
-        if product == "alpargata":
-            return {
-                "next_action": "coming_soon",
-                "priority": "normal",
-                "should_handoff": False,
-                "reason": "espadrilles_not_yet_available",
-                "missing_fields": [],
-            }
 
         if not data.color:
             return {"next_action":"ask_color","priority":"normal","should_handoff":False,"reason":"missing_color","missing_fields":["color"]}
