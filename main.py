@@ -111,15 +111,16 @@ FOSTERS_PRICE_BS = 300
 FOSTERS_COST_BS = 110
 PANCAKE_WAREHOUSE_ID = "c52e67ad-d9d0-4276-abe4-e0c9f1f7d2da"
 
-# Legacy URLs for historic Henley photos only. Never reuse for the new shirt.
+# Compatibility aliases for older size/order integrations. Public product data is
+# supplied by fosters_products.py, not by this legacy lookup.
 FOSTERS_CATALOG = {
     "negro":{"name":"Negro","sizes":["M","L","XL"],"image_url":None},
     "blanco":{"name":"Blanco","sizes":["M","L","XL"],"image_url":None},
+    "azul":{"name":"Azul","sizes":["M","L","XL"],"image_url":None},
     "celeste":{"name":"Celeste","sizes":["M","L","XL"],"image_url":None},
-    "plomo":{"name":"Plomo","sizes":["M","L","XL"],"image_url":None},
     "beige":{"name":"Beige","sizes":["M","L","XL"],"image_url":None}
 }
-COLOR_ALIASES={"negra":"negro","blanca":"blanco","navy":"azul","azul marino":"azul","marino":"azul","crema":"beige","arena":"beige","gris":"plomo","gris plomo":"plomo"}
+COLOR_ALIASES={"negra":"negro","blanca":"blanco","navy":"azul","azul marino":"azul","marino":"azul","crema":"beige","arena":"beige"}
 
 
 # -----------------------------------------------------------------------------
@@ -794,7 +795,7 @@ def get_products_test(
 class HandoffNotifyRequest(BaseModel):
     customer_name: Optional[str] = None
     phone: Optional[str] = None
-    product: Optional[str] = "Camisa lino brasilero"
+    product: Optional[str] = "Henley"
     color: Optional[str] = None
     size: Optional[str] = None
     quantity: Optional[int] = 1
