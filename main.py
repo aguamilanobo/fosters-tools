@@ -932,7 +932,7 @@ AGUA_CATALOG = {
     "camisa": {
         "name": "Camisa manga corta de lino",
         "price_bs": AGUA_CAMISA_PRICE_BS,
-        "status": "active",
+        "status": "standby",
         "colors": ["Perla", "Azul"],
         "sizes": ["M", "L", "XL"],
         "measurements": AGUA_SHIRT_MEASUREMENTS,
@@ -940,7 +940,7 @@ AGUA_CATALOG = {
     "short": {
         "name": "Short de lino",
         "price_bs": AGUA_SHORT_PRICE_BS,
-        "status": "active",
+        "status": "standby",
         "colors": ["Perla", "Azul"],
         "sizes": [],
         "measurements": None,
@@ -992,6 +992,9 @@ def get_agua_catalog(
     normalized = normalize_agua_product(product)
 
     if normalized == "conjunto":
+        return {"found": False, "status": "unavailable", "available_products": ["Alpargatas"]}
+
+    if False:
         return {
             "found": True,
             "product": "Conjunto camisa + short de lino",
@@ -1008,8 +1011,11 @@ def get_agua_catalog(
             return {
                 "found": False,
                 "product": product,
-                "available_products": [x["name"] for x in AGUA_CATALOG.values()],
+                "available_products": [x["name"] for x in AGUA_CATALOG.values() if x["status"] == "active"],
             }
+
+        if item["status"] != "active":
+            return {"found": False, "status": "unavailable", "available_products": ["Alpargatas"]}
 
         if color:
             available = any(c.lower() == color.strip().lower() for c in item["colors"])
@@ -1037,13 +1043,9 @@ def get_agua_catalog(
         "brand": "aguaMILANO",
         "products": [
             {"product_key": key, **item}
-            for key, item in AGUA_CATALOG.items()
+            for key, item in AGUA_CATALOG.items() if item["status"] == "active"
         ],
-        "matching_set": {
-            "name": "Conjunto camisa + short de lino",
-            "price_bs": AGUA_CAMISA_PRICE_BS + AGUA_SHORT_PRICE_BS,
-            "colors": ["Perla", "Azul"],
-        },
+
     }
 
 
@@ -1117,7 +1119,7 @@ def check_agua_stock(data: AguaStockRequest):
         return {"connected": False, "available": None, "status": "stock_unverified",
                 "product": "alpargata", "message": "Producto activo. Confirmar existencias por color y talla en Pancake POS."}
 
-    if product not in ("camisa", "short"):
+    if product not in ("alpargata",):
         return {
             "connected": True,
             "available": None,
@@ -1239,7 +1241,11 @@ def prepare_agua_order(data: AguaOrderRequest):
         qty = raw.quantity if raw.quantity and raw.quantity > 0 else 1
 
         if product == "conjunto":
-            # Expand a matching set into its two physical POS items.
+            missing_fields.append(f"items[{idx}].availability")
+            continue
+
+        if False:
+            # Historic matching set logic remains retained but inactive.
             for child in ("camisa", "short"):
                 item_data = AGUA_CATALOG[child]
                 normalized_items.append({
