@@ -994,17 +994,6 @@ def get_agua_catalog(
     if normalized == "conjunto":
         return {"found": False, "status": "unavailable", "available_products": ["Alpargatas"]}
 
-    if False:
-        return {
-            "found": True,
-            "product": "Conjunto camisa + short de lino",
-            "status": "active",
-            "price_bs": AGUA_CAMISA_PRICE_BS + AGUA_SHORT_PRICE_BS,
-            "items": ["camisa", "short"],
-            "colors": ["Perla", "Azul"],
-            "note": "El conjunto son dos prendas independientes. El stock debe verificarse por cada prenda y variante.",
-        }
-
     if normalized:
         item = AGUA_CATALOG.get(normalized)
         if not item:
@@ -1242,27 +1231,6 @@ def prepare_agua_order(data: AguaOrderRequest):
 
         if product == "conjunto":
             missing_fields.append(f"items[{idx}].availability")
-            continue
-
-        if False:
-            # Historic matching set logic remains retained but inactive.
-            for child in ("camisa", "short"):
-                item_data = AGUA_CATALOG[child]
-                normalized_items.append({
-                    "product": child,
-                    "product_name": item_data["name"],
-                    "color": raw.color,
-                    "size": raw.size,
-                    "quantity": qty,
-                    "unit_price_bs": item_data["price_bs"],
-                    "subtotal_bs": item_data["price_bs"] * qty,
-                    "stock_check_required": True,
-                })
-                total_bs += item_data["price_bs"] * qty
-                if not raw.color:
-                    missing_fields.append(f"items[{idx}].color")
-                if not raw.size:
-                    missing_fields.append(f"items[{idx}].size")
             continue
 
         item_data = AGUA_CATALOG.get(product or "")
