@@ -1522,25 +1522,21 @@ class AguaSalesAngleRequest(BaseModel):
 
 @app.post("/agua/decide-sales-angle")
 def decide_agua_sales_angle(data: AguaSalesAngleRequest):
-    occasion = (data.occasion or "").lower()
-    if data.wants_full_set:
-        angle, product, hint = "complete_look", "conjunto", "Si querés algo ya resuelto, la camisa con el short del mismo color queda muy bien."
-    elif data.values_freshness or any(x in occasion for x in ["calor","verano","día","dia"]):
-        angle, product, hint = "freshness", "camisa", "Para calor, la camisa de lino es una opción fresca y fácil de usar."
-    elif data.values_comfort:
-        angle, product, hint = "comfort", "camisa", "La idea es que te veas arreglado sin sentirte demasiado vestido."
-    elif data.values_elegance or any(x in occasion for x in ["cita","salir","cena","reunión","reunion"]):
-        angle, product, hint = "simple_elegance", "camisa", "Para ese plan, la camisa queda arreglada sin verse demasiado formal."
+    """Only recommend the sole current public product: aguaMILANO alpargatas."""
+    if data.preferred_color and data.preferred_color.strip().lower() in [
+        c.lower() for c in AGUA_CATALOG["alpargata"]["colors"]
+    ]:
+        color = next(c for c in AGUA_CATALOG["alpargata"]["colors"]
+                     if c.lower() == data.preferred_color.strip().lower())
     else:
-        angle, product, hint = "easy_to_combine", "camisa", "Es una prenda fácil de combinar y de usar seguido."
-    color = None
-    if data.preferred_color and data.preferred_color.lower() in ["perla","azul"]:
-        color = data.preferred_color.capitalize()
-    elif data.values_easy_to_combine or data.wants_daily_use:
-        color = "Perla"
-    elif data.values_elegance:
-        color = "Azul"
-    return {"angle":angle,"recommended_product":product,"recommended_color":color,"response_hint":hint,"stock_must_be_checked":True}
+        color = "Beige" if (data.values_easy_to_combine or data.wants_daily_use) else None
+    return {
+        "angle": "versatile_footwear",
+        "recommended_product": "alpargata",
+        "recommended_color": color,
+        "response_hint": "Nuestras alpargatas aguaMILANO cuestan 300 Bs y vienen en beige, ocre, chocolate, verde y azul marino.",
+        "stock_must_be_checked": True,
+    }
 
 class AguaObjectionRequest(BaseModel):
     objection_type: str
@@ -1551,15 +1547,13 @@ class AguaObjectionRequest(BaseModel):
 def handle_agua_objection(data: AguaObjectionRequest):
     kind = (data.objection_type or "").strip().lower()
     if kind in ["caro","precio","price"]:
-        return {"strategy":"reinforce_value_without_discount","should_handoff":False,"response_hint":"Entiendo querido. La idea es que sea una prenda versátil, cómoda y fácil de combinar."}
+        return {"strategy":"reinforce_value_without_discount","should_handoff":False,"response_hint":"Entiendo querido. Nuestras alpargatas están a 300 Bs el par. Tenemos cinco colores para elegir."}
     if kind in ["pensar","lo pienso","think"]:
         return {"strategy":"no_pressure","should_handoff":False,"response_hint":"Dale querido, cualquier duda con color o talle me escribís."}
     if kind == "color":
-        return {"strategy":"guide_choice","should_handoff":False,"response_hint":"Si querés algo más fácil de combinar, Perla; si buscás más presencia, Azul."}
+        return {"strategy":"guide_choice","should_handoff":False,"response_hint":"Tenemos beige, ocre, chocolate, verde y azul marino. ¿Qué color te gusta?"}
     if kind in ["talle","talla","size"]:
-        if normalize_agua_product(data.product) == "short":
-            return {"strategy":"ask_usual_short_size","should_handoff":False,"response_hint":"¿Qué talle de short usás habitualmente?"}
-        return {"strategy":"use_shirt_size_flow","should_handoff":False,"response_hint":"Pasame tu altura y peso y te recomiendo el talle."}
+        return {"strategy":"ask_espadrille_size","should_handoff":False,"response_hint":"Las alpargatas vienen en 40 (25 cm), 41 (26 cm) y 42 (27 cm). ¿Cuánto mide tu pie?"}
     if kind in ["stock","disponibilidad","availability"]:
         return {"strategy":"check_pos_stock","should_handoff":False,"response_hint":"Confirmo esa variante y te digo."}
     if kind in ["envio","envío","shipping"]:
