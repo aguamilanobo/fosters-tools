@@ -1263,16 +1263,17 @@ def prepare_agua_order(data: AguaOrderRequest):
             "quantity": qty,
             "unit_price_bs": item_data["price_bs"],
             "subtotal_bs": subtotal,
-            "stock_check_required": True,
+            "stock_check_required": False,
         })
 
-    # Stock is intentionally required before an order can be considered final.
+    # Prepare commercial order without blocking on external POS inventory.
     ready = len(missing_fields) == 0
-    next_step = "check_stock" if ready else "collect_missing_fields"
+    next_step = "ask_destination" if ready else "collect_missing_fields"
 
     return {
         "ready_to_order": ready,
-        "stock_check_required": ready,
+        "stock_check_required": False,
+        "stock_verified": False,
         "missing_fields": sorted(set(missing_fields)),
         "next_step": next_step,
         "items": normalized_items,
@@ -1426,24 +1427,6 @@ def decide_agua_next_action(data: AguaNextActionRequest):
             return {"next_action":"ask_color","priority":"normal","should_handoff":False,"reason":"missing_color","missing_fields":["color"]}
         if not data.size:
             return {"next_action":"ask_size","priority":"normal","should_handoff":False,"reason":"missing_size","missing_fields":["size"]}
-
-        if not data.stock_checked:
-            return {
-                "next_action": "check_stock",
-                "priority": "high",
-                "should_handoff": False,
-                "reason": "variant_defined_stock_not_checked",
-                "missing_fields": [],
-            }
-
-        if data.stock_available is False:
-            return {
-                "next_action": "offer_alternative",
-                "priority": "high",
-                "should_handoff": False,
-                "reason": "out_of_stock",
-                "missing_fields": [],
-            }
 
         if not data.city and not data.department:
             return {
