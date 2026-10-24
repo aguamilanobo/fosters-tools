@@ -12,6 +12,8 @@ import threading
 from urllib import request as urllib_request, error as urllib_error, parse as urllib_parse
 
 app = FastAPI(title="FOSTERS + aguaMILANO AI Tools")
+from agua_sales_v2 import router as agua_sales_v2_router
+app.include_router(agua_sales_v2_router)
 
 from dispatch import router as dispatch_router
 app.include_router(dispatch_router)
