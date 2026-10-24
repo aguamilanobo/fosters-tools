@@ -14,6 +14,7 @@ SIZES = {
  "41":{"foot_cm":26,"br":"39.5","us":"8"},
  "42":{"foot_cm":27,"br":"40","us":"8.5"},
 }
+SIZE_CHART_TEXT = "40: 25 cm | BR 38 | US 7; 41: 26 cm | BR 39.5 | US 8; 42: 27 cm | BR 40 | US 8.5"
 USER_FIELDS = ["agua_producto","agua_color","agua_talle","agua_cantidad","agua_ciudad","agua_nombre_completo","agua_ci","agua_ubicacion","agua_etapa","agua_derivado"]
 
 def norm(v):
@@ -42,6 +43,9 @@ class Lead(BaseModel):
 def catalog():
  return {"product_key":"alpargata","name":"Alpargatas aguaMILANO",
          "price_bs":PRICE,"colors":COLORS,"sizes":SIZES,
+         "send_size_chart_with_catalog":True,
+         "size_chart_text":SIZE_CHART_TEXT,
+         "size_chart_attachment_source":"Botcake: adjuntar imagen real de tabla de medidas",
          "stock_tracking":False,"stock_verified":False,
          "user_fields":USER_FIELDS,
          "note":"Bot comercial sin POS. Sin promesas de stock ni reservas."}
@@ -68,7 +72,9 @@ def next_action(data:Lead):
  if data.asks_for_human or data.asks_for_payment or data.has_complaint:
   return {"next_action":"handoff","should_handoff":True,"reason":"customer_request"}
  if not data.wants_to_buy:
-  return {"next_action":"show_catalog","should_handoff":False}
+  return {"next_action":"show_catalog","should_handoff":False,
+          "send_product_photos":True,"send_size_chart":True,
+          "send_media_once":True,"size_chart_text":SIZE_CHART_TEXT}
  if not color_of(data.color):
   return {"next_action":"ask_color","should_handoff":False,"available_colors":COLORS}
  if not size_of(data.size):
