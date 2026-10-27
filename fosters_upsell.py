@@ -8,7 +8,7 @@ import unicodedata
 
 router=APIRouter(prefix="/fosters/upsell",tags=["FOSTERS upsell"])
 SHIRT_PRICE=300
-SHORT_REGULAR=270  # commercial campaign proposal; confirm before activation
+SHORT_REGULAR=300  # FOSTERS V5 regular shorts price
 SHORT_UPSELL=250
 SHORT_COLORS=["Azul","Negro","Perla","Beige"]
 SHORT_SIZES=["M","L","XL"]
