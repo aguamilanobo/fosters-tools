@@ -20,7 +20,7 @@ PRODUCTS={
  "shorts-lino":{
   "id":"shorts-lino","name":"Shorts de lino Fosters","price_bs":300,
   "material_label":"Lino","status":"active",
-  "colors":["Azul","Negro","Perla","Beige"],"sizes":SIZES,
+  "colors":["Azul","Negro","Blanco","Beige"],"sizes":SIZES,
   "measurements_cm":{
    "M":{"numeric_equivalent":"36 / 38","length":47,"width":33},
    "L":{"numeric_equivalent":"40 / 42","length":48,"width":35},
@@ -42,8 +42,8 @@ HIDDEN_PRODUCTS={
 }
 COLOR_ALIASES={"negra":"Negro","negro":"Negro","blanca":"Blanco","blanco":"Blanco",
  "azul":"Azul","navy":"Azul","azul marino":"Azul","celeste":"Celeste",
- "beige":"Beige","crema":"Beige","arena":"Beige","perla":"Perla",
- "blanco perla":"Perla"}
+ "beige":"Beige","crema":"Beige","arena":"Beige","perla":"Blanco",
+ "blanco perla":"Blanco"}
 def clean(value):
     x=unicodedata.normalize("NFKD",str(value or "").strip().lower())
     return "".join(ch for ch in x if not unicodedata.combining(ch))
@@ -62,7 +62,7 @@ def card(key):
     return p
 def reply(key):
     if key=="shorts-lino":
-        return "Hola querido, los shorts de lino Fosters están a 300 Bs. Tenemos azul, negro, perla y beige, en M, L y XL. ¿Qué talla y color buscás?"
+        return "Hola querido, los shorts de lino Fosters están a 300 Bs. Tenemos azul, negro, blanco y beige, en M, L y XL. ¿Qué talla y color buscás?"
     return "Hola querido, las Henley Fosters están a 300 Bs. Tenemos negro, blanco, azul, celeste y beige, en M, L y XL. ¿Qué talle y color buscás?"
 @router.get("/fosters/products")
 def products():
