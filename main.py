@@ -21,6 +21,8 @@ from dispatch_ops import router as dispatch_ops_router
 app.include_router(dispatch_ops_router)
 from fosters_products import router as fosters_products_router, PRODUCTS as FOSTERS_PRODUCTS, product_key as fosters_product_key
 app.include_router(fosters_products_router)
+from fosters_upsell import router as fosters_upsell_router
+app.include_router(fosters_upsell_router)
 from fosters_ads_diagnostic import router as fosters_ads_router
 app.include_router(fosters_ads_router)
 from dispatch_test_send import router as dispatch_test_send_router
