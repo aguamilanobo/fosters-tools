@@ -10,16 +10,16 @@ router=APIRouter(prefix="/fosters/upsell",tags=["FOSTERS upsell"])
 SHIRT_PRICE=300
 SHORT_REGULAR=270  # commercial campaign proposal; confirm before activation
 SHORT_UPSELL=250
-SHORT_COLORS=["Azul","Negro","Perla","Beige"]
+SHORT_COLORS=["Azul","Negro","Blanco","Beige"]
 SHORT_SIZES=["M","L","XL"]
 STATUS_VALUES=["not_offered","offered","accepted","declined","completed"]
 MATCHES={
- "azul":["Azul","Perla"],
- "navy":["Azul","Perla"],
- "azul marino":["Azul","Perla"],
- "negro":["Negro","Perla"],
- "blanco":["Perla","Azul"],
- "celeste":["Perla","Azul"],
+ "azul":["Azul","Blanco"],
+ "navy":["Azul","Blanco"],
+ "azul marino":["Azul","Blanco"],
+ "negro":["Negro","Blanco"],
+ "blanco":["Blanco","Azul"],
+ "celeste":["Blanco","Azul"],
  "beige":["Beige","Azul"],
  "crema":["Beige","Azul"],
 }
@@ -29,9 +29,12 @@ def n(v):
  s=unicodedata.normalize("NFKD",str(v or "").strip().lower())
  return "".join(c for c in s if not unicodedata.combining(c))
 def suggested(c):
- return MATCHES.get(n(c),["Perla","Azul"])
+ return MATCHES.get(n(c),["Blanco","Azul"])
 def selected_color(v):
- return next((x for x in SHORT_COLORS if n(x)==n(v)),None)
+ normalized=n(v)
+ if normalized in ("perla","blanco perla"): normalized="blanco"
+ if normalized in ("azul marino","navy"): normalized="azul"
+ return next((x for x in SHORT_COLORS if n(x)==normalized),None)
 
 class OfferRequest(BaseModel):
  product:str="henley"
