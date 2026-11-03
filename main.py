@@ -729,7 +729,7 @@ def build_pancake_variations(product_id):
             variant_id=(product_id+"-"+color+"-"+size).lower().replace(" ","-")
             result.append({"api_variation_id":variant_id,
              "fields":[{"name":"Color","value":color,"id":""},{"name":"Size","value":size,"id":""}],
-             "images":[],"last_imported_price":300,"retail_price":300,
+             "images":[],"last_imported_price":p["price_bs"],"retail_price":p["price_bs"],
              "weight":0,"barcode":variant_id.upper(),"custom_id":variant_id,
              "permalink":"https://fosters-tools.onrender.com/fosters/product?product="+product_id})
     return result

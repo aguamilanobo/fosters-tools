@@ -31,7 +31,7 @@ marcar_pedido_pagado y cancelar_pedido no están implementadas en este repositor
 - El catálogo API tiene image_urls vacías. Eso no impide usar adjuntos internos de Botcake, pero no demuestra que el flujo de envío esté conectado.
 - Asociar las nueve fotos por producto/color según la tabla V8. Conservar los IDs reales. Los nombres truncados de tabla, audio y PDF no son identificadores utilizables; seleccionar sus adjuntos existentes en el editor.
 - Se eliminan repeticiones de “SIEMPRE”: fotos una vez al abrir el producto; tabla al necesitarla; audio y PDF opcionales. Solicitudes explícitas permiten reenviar.
-- Shorts: V7 decía 280 Bs y el backend 300 Bs. La V8 conserva el precio actual de la API (300), upsell 250 y ahorro 50. No cambiar precios Shopify existentes.
+- Shorts: precio normal confirmado por el negocio 280 Bs, upsell 250 y ahorro 30. Backend y V8 usan esos valores. No cambiar precios Shopify existentes.
 - Cantidad de botones: V7 decía cuatro y backend tres. Sin ficha comprobada, ambos quedan como “botones en el pecho”.
 
 ## Validación pendiente en el agente real

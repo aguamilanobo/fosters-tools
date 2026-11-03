@@ -18,7 +18,7 @@ PRODUCTS={
   "availability_note":"Confirmar stock real por talle y color en Pancake POS."
  },
  "shorts-lino":{
-  "id":"shorts-lino","name":"Shorts de lino Fosters","price_bs":300,
+  "id":"shorts-lino","name":"Shorts de lino Fosters","price_bs":280,
   "material_label":"Lino","status":"active",
   "colors":["Azul","Negro","Perla","Beige"],"sizes":SIZES,
   "measurements_cm":{
@@ -62,7 +62,7 @@ def card(key):
     return p
 def reply(key):
     if key=="shorts-lino":
-        return "Shorts de lino a 300 Bs: azul, negro, perla y beige; M, L y XL. ¿Qué color y talle llevás?"
+        return "Shorts de lino a 280 Bs: azul, negro, perla y beige; M, L y XL. ¿Qué color y talle llevás?"
     return "Henley a 300 Bs: negro, blanco, azul, celeste y beige; M, L y XL. ¿Qué color y talle llevás?"
 @router.get("/fosters/products")
 def products():
