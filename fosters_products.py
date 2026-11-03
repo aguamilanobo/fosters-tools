@@ -62,8 +62,8 @@ def card(key):
     return p
 def reply(key):
     if key=="shorts-lino":
-        return "Hola querido, los shorts de lino Fosters están a 300 Bs. Tenemos azul, negro, perla y beige, en M, L y XL. ¿Qué talla y color buscás?"
-    return "Hola querido, las Henley Fosters están a 300 Bs. Tenemos negro, blanco, azul, celeste y beige, en M, L y XL. ¿Qué talle y color buscás?"
+        return "Shorts de lino a 300 Bs: azul, negro, perla y beige; M, L y XL. ¿Qué color y talle llevás?"
+    return "Henley a 300 Bs: negro, blanco, azul, celeste y beige; M, L y XL. ¿Qué color y talle llevás?"
 @router.get("/fosters/products")
 def products():
     return {"primary_product":"henley","products":[card("henley"),card("shorts-lino")],

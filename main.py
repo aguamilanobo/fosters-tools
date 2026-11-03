@@ -11,7 +11,10 @@ import time
 import threading
 from urllib import request as urllib_request, error as urllib_error, parse as urllib_parse
 
+from sales_policy import router as sales_policy_router, location_response
+
 app = FastAPI(title="FOSTERS + aguaMILANO AI Tools")
+app.include_router(sales_policy_router)
 from agua_sales_v2 import router as agua_sales_v2_router
 app.include_router(agua_sales_v2_router)
 
@@ -1361,6 +1364,8 @@ class AguaNextActionRequest(BaseModel):
     city: Optional[str] = None
     department: Optional[str] = None
     wants_to_buy: bool = False
+    asks_for_store_location: bool = False
+    asks_for_photos: bool = False
     asks_for_catalog: bool = False
     asks_for_size_help: bool = False
     asks_for_payment: bool = False
@@ -1387,12 +1392,19 @@ def decide_agua_next_action(data: AguaNextActionRequest):
             "missing_fields": [],
         }
 
-    if data.asks_for_catalog:
+    if data.asks_for_store_location:
+        return location_response()
+
+    if data.asks_for_catalog or data.asks_for_photos:
         return {
             "next_action": "send_catalog",
             "priority": "normal",
             "should_handoff": False,
             "reason": "catalog_requested",
+            "product": data.product,
+            "color": data.color,
+            "send_product_photos": True,
+            "media_delivery": "botcake_flow_required",
             "missing_fields": [],
         }
 
@@ -1601,6 +1613,8 @@ class NextActionRequest(BaseModel):
     city: Optional[str] = None
     department: Optional[str] = None
     wants_to_buy: bool = False
+    asks_for_store_location: bool = False
+    asks_for_photos: bool = False
     asks_for_catalog: bool = False
     asks_for_size_help: bool = False
     asks_for_discount: bool = False
@@ -1617,11 +1631,14 @@ def decide_next_action(data: NextActionRequest):
         reason = "payment_request" if data.asks_for_payment else "complaint" if data.has_complaint else "human_request"
         return {"next_action":"handoff","priority":"critical","should_handoff":True,"reason":reason,"missing_fields":[],"message_hint":"Derivar al administrador y detener la IA."}
 
+    if data.asks_for_store_location:
+        return location_response()
+
     if data.asks_for_size_help and not data.size:
         return {"next_action":"recommend_size","priority":"high","should_handoff":False,"reason":"size_help_requested","missing_fields":["height_cm","weight_kg"],"message_hint":"Pedir altura y peso si todavía no fueron proporcionados."}
 
-    if data.asks_for_catalog and not data.color:
-        return {"next_action":"send_catalog","priority":"normal","should_handoff":False,"reason":"catalog_requested","missing_fields":[],"message_hint":"Consultar /fosters/products y enviar fotos reales de Henley o shorts según el producto; nunca usar fotos de prendas ocultas."}
+    if data.asks_for_catalog or data.asks_for_photos:
+        return {"next_action":"send_catalog","priority":"normal","should_handoff":False,"reason":"catalog_requested","missing_fields":[],"product":data.product,"color":data.color,"send_product_photos":True,"media_delivery":"botcake_flow_required","message_hint":"Consultar /fosters/products y enviar fotos reales de Henley o shorts según el producto; nunca usar fotos de prendas ocultas."}
 
     if data.asks_for_discount:
         if not data.quantity or data.quantity <= 1:
@@ -1650,4 +1667,4 @@ def decide_next_action(data: NextActionRequest):
             return {"next_action":"ask_name_ci","priority":"high","should_handoff":False,"reason":"other_department_missing_data","missing_fields":missing_shipping,"message_hint":"Pedir únicamente nombre completo y CI."}
         return {"next_action":"handoff","priority":"critical","should_handoff":True,"reason":"other_department_shipping_ready","missing_fields":[],"message_hint":"Nombre y CI recibidos. Derivar al administrador."}
 
-    return {"next_action":"continue_sales","priority":"normal","should_handoff":False,"reason":"no_critical_action","missing_fields":[],"message_hint":"Continuar la conversación comercial normalmente."}
+    return {"next_action":"continue_sales","priority":"normal","should_handoff":False,"reason":"no_critical_action","missing_fields":[],"message_hint":"Responder solo lo consultado, en una o dos frases. Si falta un dato para comprar, pedir únicamente ese dato; no repetir preguntas ni ofrecer pasos extra."}

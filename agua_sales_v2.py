@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional, List
 import unicodedata
+from sales_policy import location_response
 
 router = APIRouter(prefix="/agua/v2", tags=["aguaMILANO sales-only"])
 PRICE = 300
@@ -34,6 +35,7 @@ class Lead(BaseModel):
  full_name:Optional[str]=None
  ci:Optional[str]=None
  location_shared:bool=False
+ asks_for_store_location:bool=False
  wants_to_buy:bool=False
  asks_for_human:bool=False
  asks_for_payment:bool=False
@@ -71,6 +73,8 @@ def size(usual_size:Optional[str]=None,foot_cm:Optional[float]=None,us_size:Opti
 def next_action(data:Lead):
  if data.asks_for_human or data.asks_for_payment or data.has_complaint:
   return {"next_action":"handoff","should_handoff":True,"reason":"customer_request"}
+ if data.asks_for_store_location:
+  return location_response()
  if not data.wants_to_buy:
   return {"next_action":"show_catalog","should_handoff":False,
           "send_product_photos":True,"send_size_chart":True,

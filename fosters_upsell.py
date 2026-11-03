@@ -42,6 +42,7 @@ class OfferRequest(BaseModel):
  shirt_size:Optional[str]=None
  shirt_quantity:int=Field(default=1,ge=1,le=100)
  buying_intent:bool=False
+ customer_requested_upsell:bool=False
  upsell_status:str="not_offered"
  already_handed_off:bool=False
  customer_requested_no_offers:bool=False
@@ -68,7 +69,7 @@ def config():
 @router.post("/offer")
 def offer(data:OfferRequest):
  eligible=(n(data.product) in ("henley","henley fosters")
-  and data.buying_intent and bool(data.shirt_color) and data.shirt_size in ("M","L","XL")
+  and data.customer_requested_upsell and data.buying_intent and bool(data.shirt_color) and data.shirt_size in ("M","L","XL")
   and n(data.upsell_status) in ("","not_offered","sin_dato")
   and not data.already_handed_off and not data.customer_requested_no_offers)
  if not eligible:
@@ -80,10 +81,10 @@ def offer(data:OfferRequest):
   "shirt_color":data.shirt_color,"recommended_short_colors":picks,
   "available_short_colors":SHORT_COLORS,"short_sizes":SHORT_SIZES,
   "send_short_photos":picks,"send_photos_once":True,
-  "message":f"Querido, como llevás una Henley {data.shirt_color}, te puedo dejar nuestros nuevos shorts de lino a 250 Bs en vez de 270 Bs. {picks[0]} o {picks[1]} combinan muy bien. ¿Querés verlos?",
+  "message":f"Con tu Henley, el short queda a {SHORT_UPSELL} Bs en vez de {SHORT_REGULAR} Bs. ¿Qué color y talle preferís?",
   "user_fields_to_set":{"fosters_upsell_estado":"offered",
                          "fosters_upsell_oferta_id":"henley-shorts-250-v1"},
-  "next_action":"await_upsell_decision","do_not_handoff_yet":True}
+  "next_action":"await_upsell_decision","do_not_handoff_yet":False}
 
 @router.post("/decision")
 def decision(data:DecisionRequest):
