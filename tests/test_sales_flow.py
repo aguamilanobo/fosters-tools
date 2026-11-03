@@ -3,6 +3,7 @@ import unittest
 from main import (
     NextActionRequest, decide_next_action,
     AguaNextActionRequest, decide_agua_next_action,
+    OrderPrepRequest, prepare_order, ShippingPrepRequest, prepare_shipping,
 )
 from agua_sales_v2 import Lead, next_action
 from fosters_upsell import OfferRequest, offer, DecisionRequest, decision
@@ -64,6 +65,33 @@ class SalesFlowTests(unittest.TestCase):
         self.assertFalse(result['do_not_handoff_yet'])
         self.assertFalse(offer(OfferRequest(customer_requested_upsell=True,
                                           already_handed_off=True, **data))['should_offer'])
+
+    def test_santa_cruz_order_needs_no_name_or_ci(self):
+        result = prepare_order(OrderPrepRequest(product='henley', color='Negro',
+                                                size='M', city='Santa Cruz'))
+        self.assertTrue(result['ready_to_order'])
+        self.assertFalse(result['order_created'])
+        result = prepare_shipping(ShippingPrepRequest(city='Santa Cruz',
+                                  order_confirmed=True, location_shared=True))
+        self.assertTrue(result['handoff_required'])
+        self.assertEqual(result['missing_fields'], [])
+
+    def test_shipping_asks_destination_before_documents(self):
+        result = prepare_shipping(ShippingPrepRequest(order_confirmed=True))
+        self.assertEqual(result['next_step'], 'ask_destination')
+        self.assertNotIn('ci', result['missing_fields'])
+
+    def test_shipping_does_not_repeat_known_name(self):
+        result = prepare_shipping(ShippingPrepRequest(city='La Paz',
+                                  full_name='Cliente de prueba', order_confirmed=True))
+        self.assertEqual(result['missing_fields'], ['ci'])
+        self.assertNotIn('nombre completo', result['message'])
+
+    def test_known_quantity_one_does_not_loop(self):
+        result = decide_next_action(NextActionRequest(asks_for_discount=True, quantity=1))
+        self.assertEqual(result['next_action'], 'get_discount')
+        result = decide_next_action(NextActionRequest(asks_for_discount=True, quantity=None))
+        self.assertEqual(result['next_action'], 'ask_quantity_for_discount')
 
     def test_accepted_upsell_total_unchanged(self):
         result = decision(DecisionRequest(decision='si', short_color='perla', short_size='M'))

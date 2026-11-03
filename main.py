@@ -184,13 +184,13 @@ def prepare_order(data: OrderPrepRequest):
     if not data.color: missing_fields.append("color")
     if not data.size: missing_fields.append("size")
     if not data.city: missing_fields.append("city")
-    if not data.name: missing_fields.append("name")
     ready_to_order = len(missing_fields) == 0
     return {
         "product": data.product, "color": data.color, "size": data.size,
         "quantity": quantity, "city": data.city, "name": data.name, "phone": data.phone,
         "missing_fields": missing_fields,
         "ready_to_order": ready_to_order,
+        "order_created": False, "stock_verified": False,
         "next_step": "ready" if ready_to_order else f"ask_for_{missing_fields[0]}",
     }
 
@@ -218,6 +218,8 @@ def prepare_shipping(data: ShippingPrepRequest):
     )
     if not data.order_confirmed:
         return {"shipping_type":"not_ready","missing_fields":[],"next_step":"wait_for_order_confirmation","handoff_required":False,"message":"No pedir datos de envío todavía."}
+    if not department and not city:
+        return {"shipping_type":"not_ready","missing_fields":["city_or_department"],"next_step":"ask_destination","handoff_required":False,"message":"¿De qué ciudad sos?"}
     if is_santa_cruz:
         if not data.location_shared:
             return {"shipping_type":"santa_cruz","missing_fields":["location"],"next_step":"ask_location","handoff_required":False,"message":"Pedir ubicación para coordinar el envío."}
@@ -226,7 +228,7 @@ def prepare_shipping(data: ShippingPrepRequest):
     if not data.full_name: missing_fields.append("full_name")
     if not data.ci: missing_fields.append("ci")
     if missing_fields:
-        return {"shipping_type":"other_department","missing_fields":missing_fields,"next_step":"ask_full_name_and_ci","handoff_required":False,"message":"Pedir nombre completo y CI."}
+        return {"shipping_type":"other_department","missing_fields":missing_fields,"next_step":"ask_full_name_and_ci","handoff_required":False,"message":"Pedir únicamente los datos faltantes: " + ", ".join("nombre completo" if field == "full_name" else "CI" for field in missing_fields) + "."}
     return {"shipping_type":"other_department","missing_fields":[],"next_step":"handoff_admin","handoff_required":True,"message":"Nombre completo y CI recibidos. Derivar a administrador."}
 
 
@@ -1641,7 +1643,7 @@ def decide_next_action(data: NextActionRequest):
         return {"next_action":"send_catalog","priority":"normal","should_handoff":False,"reason":"catalog_requested","missing_fields":[],"product":data.product,"color":data.color,"send_product_photos":True,"media_delivery":"botcake_flow_required","message_hint":"Consultar /fosters/products y enviar fotos reales de Henley o shorts según el producto; nunca usar fotos de prendas ocultas."}
 
     if data.asks_for_discount:
-        if not data.quantity or data.quantity <= 1:
+        if not data.quantity or data.quantity < 1:
             return {"next_action":"ask_quantity_for_discount","priority":"normal","should_handoff":False,"reason":"discount_requested_without_quantity","missing_fields":["quantity"],"message_hint":"Preguntar cuántas prendas quiere llevar."}
         return {"next_action":"get_discount","priority":"normal","should_handoff":False,"reason":"discount_requested","missing_fields":[],"message_hint":"Usar get_fosters_discount."}
 

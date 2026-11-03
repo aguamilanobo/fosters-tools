@@ -10,7 +10,7 @@ SIZES=["M","L","XL"]
 PRODUCTS={
  "henley":{
   "id":"henley","name":"Henley Fosters","price_bs":300,
-  "material_label":"55% lino / 45% algodón","closure":"Tres botones en el pecho",
+  "material_label":"55% lino / 45% algodón","closure":"Botones en el pecho",
   "fit":"Classic fit amplio","status":"active",
   "colors":["Negro","Blanco","Azul","Celeste","Beige"],
   "sizes":SIZES,"inventory_status":"unverified","image_urls":{},
