@@ -6,7 +6,6 @@ from main import (
     OrderPrepRequest, prepare_order, ShippingPrepRequest, prepare_shipping,
 )
 from agua_sales_v2 import Lead, next_action
-from fosters_upsell import OfferRequest, offer, DecisionRequest, decision
 from sales_policy import LOCATION_REPLY, store_info
 
 
@@ -55,18 +54,6 @@ class SalesFlowTests(unittest.TestCase):
                                            wants_to_buy=True, **delivery))
                     self.assertEqual(result['next_action'], 'handoff')
 
-    def test_buying_intent_alone_does_not_trigger_upsell(self):
-        data = dict(shirt_color='Negro', shirt_size='M', buying_intent=True)
-        self.assertFalse(offer(OfferRequest(**data))['should_offer'])
-        result = offer(OfferRequest(customer_requested_upsell=True, **data))
-        self.assertTrue(result['should_offer'])
-        self.assertIn('280 Bs', result['message'])
-        self.assertEqual(result['regular_price_bs'], 280)
-        self.assertNotIn('270', result['message'])
-        self.assertFalse(result['do_not_handoff_yet'])
-        self.assertFalse(offer(OfferRequest(customer_requested_upsell=True,
-                                          already_handed_off=True, **data))['should_offer'])
-
     def test_santa_cruz_order_needs_no_name_or_ci(self):
         result = prepare_order(OrderPrepRequest(product='henley', color='Negro',
                                                 size='M', city='Santa Cruz'))
@@ -94,23 +81,15 @@ class SalesFlowTests(unittest.TestCase):
         result = decide_next_action(NextActionRequest(asks_for_discount=True, quantity=None))
         self.assertEqual(result['next_action'], 'ask_quantity_for_discount')
 
-    def test_regular_prices_match_catalog_and_sync(self):
+    def test_regular_price_matches_catalog_and_sync(self):
         from fosters_products import product, campaign_reply
-        from fosters_upsell import config
         from main import get_catalog, build_pancake_variations
-        self.assertEqual(config()['regular_price_bs'], 280)
-        for key, expected in [('shorts-lino', 280), ('henley', 300)]:
-            self.assertEqual(product(product=key)['product']['price_bs'], expected)
-            self.assertEqual(get_catalog(product=key)['product']['price_bs'], expected)
-            self.assertIn(str(expected) + ' Bs', campaign_reply(product=key)['suggested_reply'])
-            for variant in build_pancake_variations(key):
-                self.assertEqual(variant['retail_price'], expected)
-                self.assertEqual(variant['last_imported_price'], expected)
-
-    def test_accepted_upsell_total_unchanged(self):
-        result = decision(DecisionRequest(decision='si', short_color='perla', short_size='M'))
-        self.assertEqual(result['total_bs'], 550)
-        self.assertFalse(result['order_created'])
+        self.assertEqual(product(product='henley')['product']['price_bs'], 300)
+        self.assertEqual(get_catalog(product='henley')['product']['price_bs'], 300)
+        self.assertIn('300 Bs', campaign_reply(product='henley')['suggested_reply'])
+        for variant in build_pancake_variations('henley'):
+            self.assertEqual(variant['retail_price'], 300)
+            self.assertEqual(variant['last_imported_price'], 300)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Query, Header, HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import os
@@ -22,14 +22,28 @@ from dispatch import router as dispatch_router
 app.include_router(dispatch_router)
 from dispatch_ops import router as dispatch_ops_router
 app.include_router(dispatch_ops_router)
-from fosters_products import router as fosters_products_router, PRODUCTS as FOSTERS_PRODUCTS, product_key as fosters_product_key
+from fosters_products import (router as fosters_products_router, PRODUCTS as FOSTERS_PRODUCTS,
+                              product_key as fosters_product_key, unavailable_product,
+                              contains_retired_product, media_plan)
 app.include_router(fosters_products_router)
-from fosters_upsell import router as fosters_upsell_router
-app.include_router(fosters_upsell_router)
 from fosters_ads_diagnostic import router as fosters_ads_router
 app.include_router(fosters_ads_router)
 from dispatch_test_send import router as dispatch_test_send_router
 app.include_router(dispatch_test_send_router)
+
+@app.middleware("http")
+async def retired_sales_routes(request: Request, call_next):
+    # Fail closed for old Botcake tools; do not expose the retired API in OpenAPI.
+    path = request.url.path.rstrip("/")
+    if path == "/fosters/upsell" or path.startswith("/fosters/upsell/"):
+        return JSONResponse(status_code=410, content={
+            "reason": "feature_removed", "should_offer": False, "accepted": False,
+            "ready_for_total": False, "send_product_photos": False,
+            "next_action": "continue_original_purchase", "user_fields_to_set": {},
+            "message_hint": "Continuar únicamente con la compra de Henley; no ofrecer productos adicionales.",
+        })
+    return await call_next(request)
+
 
 API_TOKEN = "fosters_bot_2026"
 telegram_bearer = HTTPBearer(auto_error=False)
@@ -178,15 +192,17 @@ class OrderPrepRequest(BaseModel):
 
 @app.post("/prepare-order")
 def prepare_order(data: OrderPrepRequest):
+    if fosters_product_key(data.product) is None:
+        return {**unavailable_product(), "ready_to_order": False, "order_created": False,
+                "next_step": "product_not_offered", "missing_fields": []}
     quantity = data.quantity if data.quantity and data.quantity > 0 else 1
     missing_fields: List[str] = []
-    if not data.product: missing_fields.append("product")
     if not data.color: missing_fields.append("color")
     if not data.size: missing_fields.append("size")
     if not data.city: missing_fields.append("city")
     ready_to_order = len(missing_fields) == 0
     return {
-        "product": data.product, "color": data.color, "size": data.size,
+        "product": "henley", "color": data.color, "size": data.size,
         "quantity": quantity, "city": data.city, "name": data.name, "phone": data.phone,
         "missing_fields": missing_fields,
         "ready_to_order": ready_to_order,
@@ -248,6 +264,10 @@ class FostersPaymentSummaryRequest(BaseModel):
 
 @app.post("/fosters/payment-summary")
 def fosters_payment_summary(data: FostersPaymentSummaryRequest):
+    if contains_retired_product(data.items):
+        return {**unavailable_product(), "ready_for_payment": False,
+                "should_send_summary": False, "summary_message": None,
+                "payment_status": "not_ready"}
     required = {
         "items": data.items,
         "full_name": data.full_name,
@@ -738,7 +758,7 @@ def build_pancake_variations(product_id):
 def get_products(page:int=Query(1,ge=1),pageSize:int=Query(50,ge=1,le=100)):
     from fosters_products import PRODUCTS
     items=[]
-    for product_id in ("henley","shorts-lino"):
+    for product_id in FOSTERS_PRODUCTS:
         p=PRODUCTS[product_id]
         items.append({"product":{
           "name":p["name"],"id":"fosters-"+product_id,
@@ -1614,6 +1634,8 @@ class NextActionRequest(BaseModel):
     quantity: Optional[int] = 1
     city: Optional[str] = None
     department: Optional[str] = None
+    is_opening: bool = False
+    opening_sent: bool = False
     wants_to_buy: bool = False
     asks_for_store_location: bool = False
     asks_for_photos: bool = False
@@ -1636,11 +1658,21 @@ def decide_next_action(data: NextActionRequest):
     if data.asks_for_store_location:
         return location_response()
 
+    if fosters_product_key(data.product) is None:
+        return {**unavailable_product(), "priority": "normal", "missing_fields": []}
+
     if data.asks_for_size_help and not data.size:
         return {"next_action":"recommend_size","priority":"high","should_handoff":False,"reason":"size_help_requested","missing_fields":["height_cm","weight_kg"],"message_hint":"Pedir altura y peso si todavía no fueron proporcionados."}
 
-    if data.asks_for_catalog or data.asks_for_photos:
-        return {"next_action":"send_catalog","priority":"normal","should_handoff":False,"reason":"catalog_requested","missing_fields":[],"product":data.product,"color":data.color,"send_product_photos":True,"media_delivery":"botcake_flow_required","message_hint":"Consultar /fosters/products y enviar fotos reales de Henley o shorts según el producto; nunca usar fotos de prendas ocultas."}
+    opening = data.is_opening and not data.opening_sent and not data.wants_to_buy and not data.asks_for_discount
+    if data.asks_for_catalog or data.asks_for_photos or opening:
+        plan = media_plan(data.color)
+        if not plan["send_product_photos"]:
+            return {"next_action": "ask_color", "priority": "normal", "should_handoff": False,
+                    "reason": "color_not_offered", "missing_fields": ["color"],
+                    "available_colors": FOSTERS_PRODUCTS["henley"]["colors"], **plan}
+        return {"next_action": "send_catalog", "priority": "normal", "should_handoff": False,
+                "reason": "opening" if opening else "catalog_requested", "missing_fields": [], **plan}
 
     if data.asks_for_discount:
         if not data.quantity or data.quantity < 1:

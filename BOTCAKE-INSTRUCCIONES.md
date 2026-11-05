@@ -1,3 +1,5 @@
+> OBSOLETO — NO CARGAR EN BOTCAKE. FOSTERS volvió a vender solo Henley. Este texto V8 contiene productos y herramientas retirados. Se conserva hasta recibir las nuevas instrucciones del responsable; la integración vigente está en BOTCAKE-INTEGRACION.md.
+
 # FOSTERS | INSTRUCCIONES MAESTRAS V8
 
 ## Prioridades
