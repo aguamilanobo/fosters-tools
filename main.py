@@ -49,6 +49,8 @@ async def retired_sales_routes(request: Request, call_next):
 
 
 API_TOKEN = "fosters_bot_2026"
+from fosters_ad_source import make_router as make_ad_source_router
+app.include_router(make_ad_source_router(API_TOKEN))
 telegram_bearer = HTTPBearer(auto_error=False)
 printer_notification_cache = {}
 
