@@ -12,6 +12,7 @@ import threading
 from urllib import request as urllib_request, error as urllib_error, parse as urllib_parse
 
 from sales_policy import router as sales_policy_router, location_response
+from fosters_channels import is_web_order, disabled_web_order
 
 app = FastAPI(title="FOSTERS + aguaMILANO AI Tools")
 app.include_router(sales_policy_router)
@@ -24,7 +25,9 @@ from dispatch_ops import router as dispatch_ops_router
 app.include_router(dispatch_ops_router)
 from fosters_products import (router as fosters_products_router, PRODUCTS as FOSTERS_PRODUCTS,
                               product_key as fosters_product_key, unavailable_product,
-                              contains_retired_product, media_plan)
+                              contains_retired_product, media_plan, needs_product_choice,
+                              general_reply, campaign_reply, COLOR_ALIASES as FOSTERS_COLOR_ALIASES,
+                              clean as clean_fosters)
 app.include_router(fosters_products_router)
 from fosters_ads_diagnostic import router as fosters_ads_router
 app.include_router(fosters_ads_router)
@@ -40,7 +43,7 @@ async def retired_sales_routes(request: Request, call_next):
             "reason": "feature_removed", "should_offer": False, "accepted": False,
             "ready_for_total": False, "send_product_photos": False,
             "next_action": "continue_original_purchase", "user_fields_to_set": {},
-            "message_hint": "Continuar únicamente con la compra de Henley; no ofrecer productos adicionales.",
+            "message_hint": "Continuar con la compra elegida de Henley o Polo; no ofrecer productos adicionales.",
         })
     return await call_next(request)
 
@@ -182,6 +185,8 @@ def recommend_size(
 # -----------------------------------------------------------------------------
 
 class OrderPrepRequest(BaseModel):
+    web_order: bool = False
+    message: Optional[str] = None
     product: Optional[str] = None
     color: Optional[str] = None
     size: Optional[str] = None
@@ -192,17 +197,24 @@ class OrderPrepRequest(BaseModel):
 
 @app.post("/prepare-order")
 def prepare_order(data: OrderPrepRequest):
-    if fosters_product_key(data.product) is None:
+    if is_web_order(data.message, data.web_order):
+        return {**disabled_web_order(), "ready_to_order": False}
+    key = fosters_product_key(data.product)
+    if key is None and needs_product_choice(data.product):
+        return {**general_reply(), "ready_to_order": False, "order_created": False}
+    if key is None:
         return {**unavailable_product(), "ready_to_order": False, "order_created": False,
                 "next_step": "product_not_offered", "missing_fields": []}
     quantity = data.quantity if data.quantity and data.quantity > 0 else 1
+    color = FOSTERS_COLOR_ALIASES.get(clean_fosters(data.color)) if data.color else None
+    size = data.size.strip().upper() if data.size else None
     missing_fields: List[str] = []
-    if not data.color: missing_fields.append("color")
-    if not data.size: missing_fields.append("size")
+    if color not in FOSTERS_PRODUCTS[key]["colors"]: missing_fields.append("color")
+    if size not in FOSTERS_PRODUCTS[key]["sizes"]: missing_fields.append("size")
     if not data.city: missing_fields.append("city")
     ready_to_order = len(missing_fields) == 0
     return {
-        "product": "henley", "color": data.color, "size": data.size,
+        "product": key, "color": color, "size": size,
         "quantity": quantity, "city": data.city, "name": data.name, "phone": data.phone,
         "missing_fields": missing_fields,
         "ready_to_order": ready_to_order,
@@ -253,6 +265,7 @@ def prepare_shipping(data: ShippingPrepRequest):
 # -----------------------------------------------------------------------------
 
 class FostersPaymentSummaryRequest(BaseModel):
+    web_order: bool = False
     items: Optional[str] = None
     full_name: Optional[str] = None
     ci: Optional[str] = None
@@ -264,6 +277,10 @@ class FostersPaymentSummaryRequest(BaseModel):
 
 @app.post("/fosters/payment-summary")
 def fosters_payment_summary(data: FostersPaymentSummaryRequest):
+    if is_web_order(data.items, data.web_order):
+        return {**disabled_web_order(), "ready_for_payment": False,
+                "should_send_summary": False, "summary_message": None,
+                "payment_status": "not_ready"}
     if contains_retired_product(data.items):
         return {**unavailable_product(), "ready_for_payment": False,
                 "should_send_summary": False, "summary_message": None,
@@ -291,8 +308,10 @@ def fosters_payment_summary(data: FostersPaymentSummaryRequest):
 
     items = str(data.items).strip()
     # Preserve the actual requested product; never force a Henley prefix.
-    if not any(term in items.lower() for term in ("henley","camisa")):
-        items = f"Henley {items}"
+    if not any(term in items.lower() for term in ("henley", "polo")):
+        return {**general_reply(), "ready_for_payment": False,
+                "should_send_summary": False, "summary_message": None,
+                "payment_status": "not_ready"}
 
     destination = str(data.department).strip()
     if data.zone_or_city and str(data.zone_or_city).strip():
@@ -1628,6 +1647,8 @@ def classify_lead(data: LeadClassifyRequest):
 # -----------------------------------------------------------------------------
 
 class NextActionRequest(BaseModel):
+    message: Optional[str] = None
+    web_order: bool = False
     product: Optional[str] = None
     color: Optional[str] = None
     size: Optional[str] = None
@@ -1651,6 +1672,8 @@ class NextActionRequest(BaseModel):
 
 @app.post("/decide-next-action")
 def decide_next_action(data: NextActionRequest):
+    if is_web_order(data.message, data.web_order):
+        return disabled_web_order()
     if data.asks_for_payment or data.asks_for_human or data.has_complaint:
         reason = "payment_request" if data.asks_for_payment else "complaint" if data.has_complaint else "human_request"
         return {"next_action":"handoff","priority":"critical","should_handoff":True,"reason":reason,"missing_fields":[],"message_hint":"Derivar al administrador y detener la IA."}
@@ -1658,19 +1681,29 @@ def decide_next_action(data: NextActionRequest):
     if data.asks_for_store_location:
         return location_response()
 
-    if fosters_product_key(data.product) is None:
+    # A new explicit customer choice overrides the saved product from an older ad.
+    key = fosters_product_key(data.message) or fosters_product_key(data.product)
+    if data.product and key is None and not needs_product_choice(data.product):
+        return {**unavailable_product(), "priority": "normal", "missing_fields": []}
+    if not data.product and contains_retired_product(data.message):
         return {**unavailable_product(), "priority": "normal", "missing_fields": []}
 
     if data.asks_for_size_help and not data.size:
         return {"next_action":"recommend_size","priority":"high","should_handoff":False,"reason":"size_help_requested","missing_fields":["height_cm","weight_kg"],"message_hint":"Pedir altura y peso si todavía no fueron proporcionados."}
 
     opening = data.is_opening and not data.opening_sent and not data.wants_to_buy and not data.asks_for_discount
+    if key is None and (opening or data.asks_for_catalog or data.asks_for_photos or data.wants_to_buy):
+        return {**general_reply(), "priority": "normal", "reason": "product_required"}
     if data.asks_for_catalog or data.asks_for_photos or opening:
-        plan = media_plan(data.color)
+        plan = media_plan(data.color, product=key)
         if not plan["send_product_photos"]:
             return {"next_action": "ask_color", "priority": "normal", "should_handoff": False,
                     "reason": "color_not_offered", "missing_fields": ["color"],
-                    "available_colors": FOSTERS_PRODUCTS["henley"]["colors"], **plan}
+                    "available_colors": FOSTERS_PRODUCTS[key]["colors"], **plan}
+        if opening:
+            campaign = campaign_reply(product=key)
+            plan.update({field: campaign[field] for field in
+                         ("campaign_key", "product_id", "suggested_reply", "send_size_chart", "size_chart")})
         return {"next_action": "send_catalog", "priority": "normal", "should_handoff": False,
                 "reason": "opening" if opening else "catalog_requested", "missing_fields": [], **plan}
 
@@ -1680,9 +1713,9 @@ def decide_next_action(data: NextActionRequest):
         return {"next_action":"get_discount","priority":"normal","should_handoff":False,"reason":"discount_requested","missing_fields":[],"message_hint":"Usar get_fosters_discount."}
 
     if data.wants_to_buy:
-        if not data.color:
+        if FOSTERS_COLOR_ALIASES.get(clean_fosters(data.color)) not in FOSTERS_PRODUCTS[key]["colors"]:
             return {"next_action":"ask_color","priority":"normal","should_handoff":False,"reason":"missing_color","missing_fields":["color"],"message_hint":"Preguntar qué color quiere."}
-        if not data.size:
+        if (data.size or "").strip().upper() not in FOSTERS_PRODUCTS[key]["sizes"]:
             return {"next_action":"ask_size","priority":"normal","should_handoff":False,"reason":"missing_size","missing_fields":["size"],"message_hint":"Preguntar qué talle busca."}
         if not data.city and not data.department:
             return {"next_action":"ask_destination","priority":"high","should_handoff":False,"reason":"order_ready_missing_destination","missing_fields":["city_or_department"],"message_hint":"Preguntar si es para Santa Cruz o envío a otro departamento."}

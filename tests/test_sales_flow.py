@@ -38,7 +38,7 @@ class SalesFlowTests(unittest.TestCase):
             for model, handler in [(NextActionRequest, decide_next_action),
                                    (AguaNextActionRequest, decide_agua_next_action)]:
                 with self.subTest(field=field, model=model.__name__):
-                    result = handler(model(color='Negro', **{field: True}))
+                    result = handler(model(product='henley', color='Negro', **{field: True}))
                     self.assertEqual(result['next_action'], 'send_catalog')
                     self.assertEqual(result['color'], 'Negro')
                     self.assertTrue(result['send_product_photos'])

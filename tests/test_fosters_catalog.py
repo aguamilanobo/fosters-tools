@@ -18,13 +18,14 @@ from main import (
 )
 
 
-class HenleyOnlyTests(unittest.TestCase):
-    def test_catalog_and_sync_publish_only_henley(self):
-        self.assertEqual([p['id'] for p in products()['products']], ['henley'])
+class FostersCatalogTests(unittest.TestCase):
+    def test_catalog_and_sync_publish_both_products(self):
+        self.assertEqual([p['id'] for p in products()['products']], ['henley', 'polo'])
         sync = get_products(page=1, pageSize=50)
-        self.assertEqual(sync['total'], 1)
+        self.assertEqual(sync['total'], 2)
         self.assertEqual(sync['data'][0]['product']['id'], 'fosters-henley')
         self.assertEqual(len(sync['data'][0]['product']['variations']), 15)
+        self.assertEqual(len(sync['data'][1]['product']['variations']), 18)
 
     def test_retired_and_unknown_requests_do_not_become_henley(self):
         for value in ['shorts-lino', 'shorts_lino', 'short', 'bermuda', 'pantalón corto',
@@ -58,7 +59,7 @@ class HenleyOnlyTests(unittest.TestCase):
 
     def test_opening_returns_five_original_henley_attachments(self):
         expected = {'negra.png', 'blanca.png', 'navy.png', 'celeste.png', 'crema.png'}
-        for result in [campaign_reply(), decide_next_action(NextActionRequest(is_opening=True))]:
+        for result in [campaign_reply(product="henley"), decide_next_action(NextActionRequest(product="henley", is_opening=True))]:
             self.assertTrue(result['send_product_photos'])
             self.assertEqual(result['photo_count'], 5)
             self.assertEqual({p['filename'] for p in result['photo_attachments']}, expected)
@@ -68,20 +69,20 @@ class HenleyOnlyTests(unittest.TestCase):
             is_opening=True, opening_sent=True))['next_action'], 'send_catalog')
         # A direct photo request must allow resending even after opening.
         self.assertEqual(decide_next_action(NextActionRequest(
-            opening_sent=True, asks_for_photos=True))['photo_count'], 5)
+            product="henley", opening_sent=True, asks_for_photos=True))['photo_count'], 5)
 
     def test_selected_color_sends_only_its_original(self):
         for alias, filename in [('navy', 'navy.png'), ('Azul marino', 'navy.png'),
                                 ('Negro', 'negra.png'), ('crema', 'crema.png')]:
             with self.subTest(color=alias):
-                result = decide_next_action(NextActionRequest(asks_for_photos=True, color=alias))
+                result = decide_next_action(NextActionRequest(product="henley", asks_for_photos=True, color=alias))
                 self.assertEqual(result['photo_count'], 1)
                 self.assertEqual(result['photo_attachments'][0]['filename'], filename)
         self.assertFalse(media_plan('Perla')['send_product_photos'])
         self.assertFalse(product(color='Perla')['found'])
 
     def test_opening_does_not_interrupt_checkout_or_location(self):
-        action = decide_next_action(NextActionRequest(is_opening=True, wants_to_buy=True,
+        action = decide_next_action(NextActionRequest(product="henley", is_opening=True, wants_to_buy=True,
                     color='Negro', size='M', city='Santa Cruz', location_shared=True))
         self.assertEqual(action['next_action'], 'handoff')
         action = decide_next_action(NextActionRequest(is_opening=True, asks_for_store_location=True))
@@ -147,7 +148,7 @@ class HenleyHTTPTests(unittest.TestCase):
                 self.assertNotIn('price_bs', result)
                 self.assertNotIn('short_item', result)
 
-    def test_public_routes_are_single_product_and_opening_has_media(self):
+    def test_public_routes_include_both_products_and_opening_has_media(self):
         for path in ['/catalog?product=shorts-lino', '/fosters/product?product=shorts_lino',
                      '/fosters/campaign-reply?product=bermuda']:
             status, result = self.request(path)
@@ -155,14 +156,38 @@ class HenleyHTTPTests(unittest.TestCase):
             self.assertFalse(result['found'])
             self.assertFalse(result['send_product_photos'])
         _, catalog = self.request('/fosters/products')
-        self.assertEqual([p['id'] for p in catalog['products']], ['henley'])
+        self.assertEqual([p['id'] for p in catalog['products']], ['henley', 'polo'])
         _, sync = self.request('/products')
-        self.assertEqual(sync['total'], 1)
-        _, action = self.request('/decide-next-action', {'is_opening': True})
+        self.assertEqual(sync['total'], 2)
+        _, action = self.request('/decide-next-action', {'product': 'henley', 'is_opening': True})
         self.assertEqual(action['photo_count'], 5)
         self.assertFalse(action['media_sent'])
         _, schema = self.request('/openapi.json')
         self.assertIn('is_opening', schema['components']['schemas']['NextActionRequest']['properties'])
+
+    def test_three_openings_and_polo_order_over_http(self):
+        for query, key, count in [('', 'general', 0), ('?product=henley', 'henley', 5),
+                                  ('?product=polo', 'polo', 6)]:
+            status, result = self.request('/fosters/campaign-reply' + query)
+            self.assertEqual(status, 200)
+            self.assertEqual(result['campaign_key'], key)
+            self.assertEqual(result['photo_count'], count)
+        status, order = self.request('/prepare-order', {'product': 'polo', 'color': 'plomo',
+                                                       'size': 'L', 'city': 'Santa Cruz'})
+        self.assertEqual(status, 200)
+        self.assertTrue(order['ready_to_order'])
+        self.assertEqual((order['product'], order['color']), ('polo', 'Gris'))
+        _, action = self.request('/decide-next-action', {'message': 'Hola quiero las polos', 'is_opening': True})
+        self.assertEqual(action['photo_count'], 6)
+        _, catalog = self.request('/catalog?product=polo&color=gris%20claro')
+        self.assertEqual(catalog['product']['selected_color'], 'Gris')
+
+    def test_web_order_guard_over_http(self):
+        for endpoint in ['/decide-next-action', '/prepare-order', '/fosters/payment-summary']:
+            status, result = self.request(endpoint, {'web_order': True})
+            self.assertEqual(status, 200)
+            self.assertEqual(result['reason'], 'web_orders_disabled')
+            self.assertTrue(result['should_handoff'])
 
 
 if __name__ == '__main__':

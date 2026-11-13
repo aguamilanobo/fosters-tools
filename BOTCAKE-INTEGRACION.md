@@ -1,56 +1,80 @@
-# FOSTERS — integración actual: solo Henley
+# FOSTERS — Henley + Polo por WhatsApp
 
-El backend FOSTERS publica exclusivamente Henley a 300 Bs, en Negro, Blanco, Azul, Celeste y Beige, talles M, L y XL.
+## Backend
 
-## Catálogo y funciones retiradas
+Dos productos activos, ambos a 300 Bs, M/L/XL:
 
-- /fosters/products, /fosters/product, /catalog y /products solo publican Henley.
-- Las consultas explícitas por productos retirados devuelven found=false y send_product_photos=false. No se convierten silenciosamente a Henley.
-- El módulo de ofertas adicionales y su manifiesto de fotos fueron eliminados.
-- Las antiguas rutas /fosters/upsell/* devuelven HTTP 410, sin precios, artículos ni ofertas, con should_offer=false, accepted=false y send_product_photos=false. No se publican en OpenAPI.
-- En Botcake retirar las herramientas fosters_upsell_offer y fosters_upsell_decision, sus automatizaciones y los adjuntos de productos retirados. Un despliegue de Render no borra la configuración propia de Botcake.
-- La preparación de órdenes no acepta productos retirados ni mezclas que los incluyan. Tampoco se genera resumen de pago o impresión de esos productos.
+| product | Material | Colores |
+| --- | --- | --- |
+| henley | 55% lino / 45% algodón | Negro, Blanco, Azul, Celeste, Beige |
+| polo | Algodón texturizado | Negro, Blanco, Azul, Celeste, Beige, Gris |
 
-## Apertura y fotos Henley
+Polo reconoce Plomo/Gris claro como Gris; Beige claro como Beige. /products incluye Henley (15 variantes) y Polo (18). El stock sigue sin verificar. No se modificaron aguaMILANO ni las fórmulas de precio, descuento o recomendación de talla.
 
-GET /fosters/campaign-reply devuelve la apertura Henley y el plan de cinco imágenes originales. POST /decide-next-action admite:
+## Aperturas y herramientas existentes
 
-- is_opening=true para una apertura comercial real.
-- opening_sent=true si esa apertura ya se completó; no repetirla automáticamente. Guardar este estado con los mecanismos existentes de Botcake, solo tras completar la apertura y sus medios. No marcarla enviada si fallan los adjuntos.
-- asks_for_photos=true o asks_for_catalog=true para una solicitud explícita, aunque la apertura ya se haya enviado.
-- color opcional: limita los adjuntos al color solicitado y admite aliases navy/Azul marino, crema, negra y blanca.
+No hace falta una nueva habilidad de descuentos ni tallas. Actualizar únicamente el esquema y las instrucciones de las herramientas Fosters existentes:
 
-Una apertura general devuelve next_action=send_catalog, send_product_photos=true, photo_count=5 y photo_attachments con estos pares:
+| Herramienta | Endpoint | Ajuste |
+| --- | --- | --- |
+| Catálogo Fosters | GET /fosters/products | Ahora devuelve ambos productos |
+| Ficha Fosters | GET /fosters/product | product=henley o polo; color opcional |
+| Apertura/campaña Fosters | GET /fosters/campaign-reply | product vacío → general; henley → cinco fotos; polo → seis |
+| decide_fosters_next_action | POST /decide-next-action | Conservar parámetros; exponer product, message opcional, web_order, is_opening y opening_sent |
+| prepare_fosters_order | POST /prepare-order | Pasar product explícito; Polo ya no se convierte en Henley; web_order bloquea pedidos web |
+| Resumen de pago | POST /fosters/payment-summary | Conserva Polo en el texto; web_order bloquea pedidos web |
+| prepare_fosters_shipping | POST /prepare-shipping | Sin cambios |
+| recommend_fosters_size | GET /recommend-size | Sin cambios |
+| get_fosters_discount | GET /discount | Sin cambios |
+| classify_fosters_lead | POST /classify-lead | Sin cambios |
 
-| Color API | Adjunto original Botcake |
-| --- | --- |
-| Negro | negra.png |
-| Blanco | blanca.png |
-| Azul | navy.png |
-| Celeste | celeste.png |
-| Beige | crema.png |
+Mantener autenticación y asignaciones reales existentes. El esquema exacto está en /openapi.json. Ejemplos de decide_fosters_next_action:
 
-Conectar send_catalog con una acción multimedia real de Botcake usando los IDs de esos adjuntos. Los nombres anteriores permiten identificar los archivos; no son IDs de medios ni URLs. Los originales y sus IDs no están disponibles en el repositorio.
+```json
+{"is_opening": true}
+```
+→ ask_product, campaign_key=general, sin fotos.
 
-media_delivery=botcake_flow_required y media_sent=false indican que la API preparó la selección, no que envió archivos. image_urls sigue vacío: no inventar URLs ni usar imágenes de otros productos. La confirmación de envío pertenece a Botcake. Recargar y vincular los cinco originales si el flujo no los encuentra.
+```json
+{"product": "henley", "is_opening": true}
+```
+→ send_catalog, cinco fotos Henley, send_size_chart=true.
 
-Exponer los nuevos parámetros is_opening y opening_sent en el esquema real de decide_fosters_next_action. Los clientes existentes pueden usar asks_for_catalog o asks_for_photos y reciben el mismo plan. El endpoint de campaña siempre devuelve el plan, pero Botcake debe evitar invocarlo como apertura en cada turno.
+```json
+{"message": "Hola, estoy interesado en las polos", "is_opening": true}
+```
+→ send_catalog, product=polo, seis fotos, send_size_chart=true.
 
-La apertura no desplaza consultas de ubicación, pago, humano, reclamos o un cierre ya iniciado. Las herramientas de Shopify conservan su conexión externa: no están implementadas en este repositorio. No usar herramientas comerciales para recrear pedidos web existentes.
+```json
+{"product": "polo", "color": "plomo", "asks_for_photos": true, "opening_sent": true}
+```
+→ una foto Polo Gris; puede reenviarse por solicitud expresa.
 
-## Correspondencias que siguen activas
+La presentación general no cuenta como apertura del producto; tras elegirlo, ejecutar la apertura correspondiente. Mantener el estado por producto en el contexto de Botcake. Cambiar de producto no debe heredar el estado de apertura del anterior.
 
-| Herramienta Botcake | Ruta backend |
-| --- | --- |
-| decide_fosters_next_action | POST /decide-next-action |
-| classify_fosters_lead | POST /classify-lead |
-| recommend_fosters_size | GET /recommend-size |
-| prepare_fosters_order | POST /prepare-order |
-| prepare_fosters_shipping | POST /prepare-shipping |
-| get_fosters_discount | GET /discount |
+## Acciones multimedia reales de Botcake
 
-Conservar la autenticación y las asignaciones reales existentes. Consultar /openapi.json para parámetros exactos.
+Henley conserva negra.png, blanca.png, navy.png, celeste.png y crema.png. Polo requiere vincular las seis imágenes provistas por el responsable:
 
-## Pendiente antes de declarar arreglado el bot activo
+| Clave lógica | Color | Identificación visual de la foto |
+| --- | --- | --- |
+| polo_negro | Negro | Polo negra, rótulo Negro |
+| polo_blanco | Blanco | Polo blanca, rótulo Blanco |
+| polo_azul | Azul | Polo azul, rótulo Azul |
+| polo_celeste | Celeste | Polo celeste, rótulo Celeste |
+| polo_beige | Beige | Rótulo Beige claro |
+| polo_gris | Gris | Rótulo Gris claro |
 
-Actualizar las instrucciones maestras con el texto que entregue el responsable; la V8 anterior quedó desactualizada y no debe cargarse. Verificar el despliegue en Render y probar en WhatsApp: apertura con cinco imágenes reales, un color específico, reenvío solicitado y ausencia de ofertas retiradas. Las pruebas locales del backend no confirman la entrega real de medios.
+Las claves no son nombres de archivo ni IDs reales. filename=null y binding_required=true señalan que el backend desconoce el vínculo en Botcake. No sustituirlo por fotos Henley. La tabla usa clave fosters_size_chart y debe vincularse a la tabla original existente. La API no ejecuta el envío. media_sent=false no confirma entrega.
+
+## Pedidos web desactivados y conservados
+
+La lógica histórica y sus instrucciones completas se conservan en docs/archive/BOTCAKE-V8-DESACTIVADO.md; no cargar ese archivo. El catálogo declara sales_channel=whatsapp y web_orders_enabled=false. Los endpoints Fosters de decisión, preparación y resumen bloquean web_order=true. Decisión y preparación también detectan el texto típico “Hola Fosters, quiero hacer este pedido” o referencias a Shopify/fostersbolivia.shop. Derivan a revisión sin crear, modificar, cobrar ni cancelar pedidos web.
+
+Las herramientas reales de Shopify viven fuera del repositorio: el despliegue en Render NO las desactiva en Botcake. Allí hay que desactivar (no borrar) sus habilidades, disparadores y reglas web. Mantener los webhooks de aguaMILANO intactos; no son pedidos web Fosters.
+
+Las rutas históricas /fosters/upsell/* continúan HTTP 410. Mantener desactivadas sus habilidades y los productos retirados.
+
+## Instrucciones activas y comprobación
+
+Usar BOTCAKE-INSTRUCCIONES.md como nuevo texto maestro exclusivo de Fosters. Antes de declarar listo el bot real, verificar en Botcake: elección general, Henley con cinco fotos, Polo con seis, Polo Gris/Plomo con una foto, tabla original, continuidad sin repetir apertura, descuento solo bajo consulta y derivación al cerrar. Las pruebas del backend no comprueban envío en WhatsApp ni cambios en Botcake.
