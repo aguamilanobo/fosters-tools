@@ -1,0 +1,23 @@
+FOSTERS | BASE DE CONOCIMIENTO V4 — 02 PRODUCTOS Y COLORES | 19/11/2026
+
+CATÁLOGO ACTIVO
+1. HENLEY FOSTERS: 300 Bs por unidad; 55% lino / 45% algodón; botones en el pecho; classic fit amplio. M, L, XL. Colores Negro, Blanco, Azul, Celeste y Beige. API: henley. No fijar cantidad de botones sin ficha verificada.
+2. POLO FOSTERS: precio final de la prenda 280 Bs por unidad; algodón texturizado. M, L, XL. Colores Negro, Blanco, Azul, Celeste, Beige y Gris. API: polo. No inventar porcentajes de composición ni características técnicas.
+
+EQUIVALENCIAS
+Azul marino/navy → Azul. Crema/arena/beige claro → Beige. Plomo/gris claro/plomo claro → Gris. Gris es únicamente de Polo; no ofrecer Henley Gris. No ofrecer Perla como color nuevo de este catálogo.
+
+Shorts, bermudas, pantalones y camisas de campañas históricas no forman parte de la oferta actual. Si se consulta por ellos, informar brevemente los dos productos vigentes. No sustituir automáticamente un producto desconocido por Henley.
+
+FOTOGRAFÍAS Y TABLA
+Henley: cinco fotos de sus colores + tabla de medidas original Fosters. Polo: seis fotos de sus colores + la misma tabla, conforme a la guía comercial vigente. General: sin fotos.
+Las fotos Polo rotuladas “Beige claro” y “Gris claro” corresponden a Beige y Gris. No usar imágenes Henley para Polo.
+Las claves polo_negro/polo_blanco/polo_azul/polo_celeste/polo_beige/polo_gris son referencias de configuración, no URLs ni IDs reales. Los nombres de archivos Henley históricos tampoco prueban que los adjuntos estén vinculados hoy. Vincular los archivos correctos en Botcake.
+/fosters/products, /catalog, /fosters/product y /fosters/campaign-reply describen catálogo y planes. No ejecutan envío. Las fotos tienen que estar cargadas en bloques multimedia reales. Un archivo de texto de conocimiento no aloja imágenes.
+No repetir automáticamente las fotos, pero reenviar si el cliente lo pide o el envío falló. Si pide un color concreto, enviar la foto de ese producto/color.
+
+INVENTARIO
+Catálogo y variantes no confirman stock. Verificar disponibilidad real por producto, color y talle en Pancake POS antes de prometerla. No inventar reservas.
+
+ORIGEN DEL ANUNCIO
+Usar el resultado fiable del detector solo como contexto inicial. La elección actual del cliente tiene prioridad. Sin producto claro, apertura General. No usar shorts_lino ni una elección Henley predeterminada.

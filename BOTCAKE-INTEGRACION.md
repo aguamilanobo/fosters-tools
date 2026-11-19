@@ -2,14 +2,14 @@
 
 ## Backend
 
-Dos productos activos, ambos a 300 Bs, M/L/XL:
+Dos productos activos, M/L/XL: Henley a 300 Bs y Polo a 280 Bs por unidad.
 
 | product | Material | Colores |
 | --- | --- | --- |
 | henley | 55% lino / 45% algodón | Negro, Blanco, Azul, Celeste, Beige |
 | polo | Algodón texturizado | Negro, Blanco, Azul, Celeste, Beige, Gris |
 
-Polo reconoce Plomo/Gris claro como Gris; Beige claro como Beige. /products incluye Henley (15 variantes) y Polo (18). El stock sigue sin verificar. No se modificaron aguaMILANO ni las fórmulas de precio, descuento o recomendación de talla.
+Polo reconoce Plomo/Gris claro como Gris; Beige claro como Beige. /products incluye Henley (15 variantes) y Polo (18). El stock sigue sin verificar. AguaMILANO, la tabla de descuentos y la fórmula de recomendación de talla permanecen sin cambios. Se actualizó exclusivamente el precio individual de Polo a 280 Bs; las variantes del feed Pancake usan ese valor.
 
 ## Aperturas y herramientas existentes
 
@@ -78,3 +78,7 @@ Las rutas históricas /fosters/upsell/* continúan HTTP 410. Mantener desactivad
 ## Instrucciones activas y comprobación
 
 Usar BOTCAKE-INSTRUCCIONES.md como nuevo texto maestro exclusivo de Fosters. Antes de declarar listo el bot real, verificar en Botcake: elección general, Henley con cinco fotos, Polo con seis, Polo Gris/Plomo con una foto, tabla original, continuidad sin repetir apertura, descuento solo bajo consulta y derivación al cerrar. Las pruebas del backend no comprueban envío en WhatsApp ni cambios en Botcake.
+
+## Base de conocimiento vigente
+
+Usar los seis documentos V4 de docs/knowledge y BOTCAKE-INSTRUCCIONES.md (V11). Los seis documentos V3 del Drive aún requieren sustitución manual en los originales y actualización de la fuente de Botcake; este repositorio no los modifica remotamente. Ver docs/knowledge/REVISION-Y-PUBLICACION.md. Dos Polo a 560 Bs equivalen a dos unidades de 280 Bs: no anunciar ahorro para esa cantidad.

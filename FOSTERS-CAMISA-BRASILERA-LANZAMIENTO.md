@@ -1,3 +1,5 @@
+> ARCHIVO HISTÓRICO DESACTIVADO. No conectar a Botcake ni usar como catálogo. La información vigente está en docs/knowledge y BOTCAKE-INSTRUCCIONES.md: Henley 300 Bs y Polo 280 Bs.
+
 > DOCUMENTO HISTÓRICO: no usar como instrucciones activas de Botcake. Describe una campaña anterior y contradice el catálogo actual. Para comportamiento comercial usar BOTCAKE-INSTRUCCIONES.md; para productos y precios usar /fosters/products.
 
 # FOSTERS — Lanzamiento camisa de lino brasilero (11-oct-2026)

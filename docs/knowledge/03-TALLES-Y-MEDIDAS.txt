@@ -1,0 +1,20 @@
+FOSTERS | BASE DE CONOCIMIENTO V4 — 03 TALLES Y MEDIDAS | 19/11/2026
+
+Talles comercializados: M, L, XL. Henley tiene classic fit amplio. Polo usa la misma habilidad de recomendación y la tabla Fosters vigente, según indicación del responsable. No modificar fórmulas compartidas ni inventar medidas nuevas.
+
+REGLA EXACTA DEL BACKEND /recommend-size
+- Peso menor que 65 kg: M, confianza media; es el talle más chico disponible.
+- Desde 65 hasta 77 kg inclusive: M, confianza alta.
+- EXCEPCIÓN: entre 73 y 77 kg inclusive y altura de 188 cm o más: L, confianza media para asegurar largo.
+- Peso mayor que 77 y hasta 86 kg inclusive: L, confianza alta.
+- Peso mayor que 86 y hasta 110 kg inclusive: XL, confianza alta.
+- Peso mayor que 110 kg: XL, confianza baja; revisar el caso antes de asegurar calce.
+Los límites incluyen pesos decimales: 77,5 kg corresponde a L; 86,5 kg corresponde a XL. Fuera de la excepción citada, la altura no modifica la recomendación actual. usual_size se registra, pero no altera el cálculo.
+
+Solicitar altura en centímetros y peso en kilogramos solo si necesita ayuda. Convertir 1,75 m a 175 cm; nunca inventar valores. Si falta un dato, pedir únicamente ese. Con ambos usar recommend_fosters_size, no calcular otra regla por cuenta propia. Respetar un talle ya elegido si no plantea dudas. No garantizar calce perfecto.
+
+La tabla original tiene que estar vinculada como imagen real en Botcake. Las medidas históricas de S/XXL y las tablas de shorts del documento V3 no son información activa ni validan stock o dimensiones del catálogo actual. No publicar centímetros históricos como medidas verificadas: consultar la tabla vigente o al responsable.
+
+Audio Talla Hernán: recurso opcional si lo solicita o necesita esa explicación; original vinculado, una sola vez salvo pedido explícito. No reemplazar automáticamente la pregunta por altura/peso por un audio sin explicación, ni convertirlo en requisito para comprar. No inventar nombres desde referencias truncadas.
+
+Guía de estilo: únicamente si la solicita, con PDF original. No interrumpir compra, pago o derivación para ofrecer audio o PDF.

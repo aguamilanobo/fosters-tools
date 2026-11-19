@@ -182,6 +182,28 @@ class HenleyHTTPTests(unittest.TestCase):
         _, catalog = self.request('/catalog?product=polo&color=gris%20claro')
         self.assertEqual(catalog['product']['selected_color'], 'Gris')
 
+    def test_prices_agree_across_catalog_openings_and_pancake_feed(self):
+        _, catalog = self.request('/fosters/products')
+        self.assertEqual({p['id']: p['price_bs'] for p in catalog['products']},
+                         {'henley': 300, 'polo': 280})
+        for key, price in [('henley', 300), ('polo', 280)]:
+            for endpoint in ['/catalog', '/fosters/product']:
+                _, detail = self.request(endpoint + '?product=' + key)
+                self.assertEqual(detail['product']['price_bs'], price)
+                self.assertIn(str(price) + ' Bs', detail['suggested_reply'])
+            _, opening = self.request('/fosters/campaign-reply?product=' + key)
+            self.assertIn(str(price) + ' Bs', opening['suggested_reply'])
+            _, action = self.request('/decide-next-action', {'product': key, 'is_opening': True})
+            self.assertIn(str(price) + ' Bs', action['suggested_reply'])
+        _, feed = self.request('/products')
+        for entry in feed['data']:
+            expected = 280 if entry['product']['id'] == 'fosters-polo' else 300
+            for variant in entry['product']['variations']:
+                self.assertEqual(variant['retail_price'], expected)
+                self.assertEqual(variant['last_imported_price'], expected)
+        _, offer = self.request('/discount?quantity=2')
+        self.assertEqual(offer['total_bs'], 560)
+
     def test_web_order_guard_over_http(self):
         for endpoint in ['/decide-next-action', '/prepare-order', '/fosters/payment-summary']:
             status, result = self.request(endpoint, {'web_order': True})

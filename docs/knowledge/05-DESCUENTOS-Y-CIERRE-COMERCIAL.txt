@@ -1,0 +1,20 @@
+FOSTERS | BASE DE CONOCIMIENTO V4 — 05 PRECIOS, DESCUENTOS Y CIERRE | 19/11/2026
+
+PRECIO INDIVIDUAL VIGENTE
+Henley: 300 Bs por unidad.
+Polo de algodón texturizado: precio final de la prenda 280 Bs por unidad.
+No añadir recargos inventados ni seguir anunciando Polo a 300 o 320 Bs. No prometer que el envío esté incluido sin confirmación.
+
+DESCUENTOS SOLO SI LOS SOLICITA
+Conservar la tabla existente de get_fosters_discount para ambos productos; no modificar la función compartida ni extrapolar:
+2 prendas: total 560 Bs.
+3 prendas: total 810 Bs.
+4 prendas: total 1050 Bs.
+5 prendas: total 1250 Bs.
+Para una unidad no hay oferta de cantidad: usar el precio del producto. Si la cantidad no tiene oferta configurada, no inventarla. Preguntar cantidad solo si falta; no volver a pedir una conocida. No acumular promociones ni hacer upsell.
+
+IMPORTANTE CON POLO
+Dos Polo a 280 Bs suman 560 Bs sin rebaja. Puede informarse ese total, pero no decir que genera ahorro ni presentarlo como un descuento exclusivo. No ofrecer la tabla espontáneamente ni usar el precio Henley para calcular una compra Polo. Si requiere un total complejo no confirmado o una excepción, derivar.
+
+Si consulta solo precio, responder el precio del producto identificado; si no hay producto ni contexto fiable, preguntar si busca Henley o Polo. No asumir Henley por defecto.
+Conservar artículo/variante/cantidad reales al preparar datos. No anunciar reservado, pagado, stock confirmado o entrega garantizada sin verificación. No recalcular pedidos web antiguos con estos precios.

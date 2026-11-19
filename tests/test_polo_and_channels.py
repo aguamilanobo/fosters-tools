@@ -11,7 +11,7 @@ class PoloAndChannelTests(unittest.TestCase):
         p = product(product='polo', color='plomo')['product']
         self.assertEqual(p['selected_color'], 'Gris')
         self.assertEqual(p['sizes'], ['M', 'L', 'XL'])
-        self.assertEqual(p['price_bs'], 300)
+        self.assertEqual(p['price_bs'], 280)
         self.assertEqual(len(p['colors']), 6)
         self.assertEqual(p['material_label'], 'Algodón texturizado')
         self.assertFalse(product(product='henley', color='plomo')['found'])

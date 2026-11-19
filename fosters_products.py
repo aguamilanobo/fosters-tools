@@ -17,7 +17,7 @@ PRODUCTS = {
         "availability_note": "Confirmar stock real por talle y color en Pancake POS.",
     },
     "polo": {
-        "id": "polo", "name": "Polo Fosters", "price_bs": 300,
+        "id": "polo", "name": "Polo Fosters", "price_bs": 280,
         "material_label": "Algodón texturizado", "status": "active",
         "colors": ["Negro", "Blanco", "Azul", "Celeste", "Beige", "Gris"],
         "sizes": SIZES, "inventory_status": "unverified", "image_urls": {},
@@ -114,9 +114,10 @@ def card(key):
 
 
 def reply(key="henley"):
+    price = PRODUCTS[key]["price_bs"]
     if key == "henley":
-        return "Henley a 300 Bs: negro, blanco, azul, celeste y beige; M, L y XL. ¿Qué color y talle llevás?"
-    return "Hola querido, estas son las Polo de algodón texturizado de Fosters, a 300 Bs: negro, blanco, azul, celeste, beige y gris; M, L y XL. ¿Qué talla y color buscás?"
+        return f"Henley a {price} Bs: negro, blanco, azul, celeste y beige; M, L y XL. ¿Qué color y talle llevás?"
+    return f"Hola querido, estas son las Polo de algodón texturizado de Fosters, a {price} Bs: negro, blanco, azul, celeste, beige y gris; M, L y XL. ¿Qué talla y color buscás?"
 
 
 @router.get("/fosters/products")
