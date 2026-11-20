@@ -1,20 +1,10 @@
-FOSTERS | BASE DE CONOCIMIENTO V4 — 05 PRECIOS, DESCUENTOS Y CIERRE | 19/11/2026
+FOSTERS | BASE DE CONOCIMIENTO V5 — 05 PRECIOS Y DESCUENTOS BREVES | 20/11/2026
 
-PRECIO INDIVIDUAL VIGENTE
-Henley: 300 Bs por unidad.
-Polo de algodón texturizado: precio final de la prenda 280 Bs por unidad.
-No añadir recargos inventados ni seguir anunciando Polo a 300 o 320 Bs. No prometer que el envío esté incluido sin confirmación.
+Henley 300 Bs por unidad; Polo 280 Bs por unidad. No inventar recargos ni costos de envío.
+Si pregunta precio, responder solo el precio del producto, en una frase. No listar todas las características ni promociones. Si falta producto, preguntar “¿Henley o Polo?”.
 
-DESCUENTOS SOLO SI LOS SOLICITA
-Conservar la tabla existente de get_fosters_discount para ambos productos; no modificar la función compartida ni extrapolar:
-2 prendas: total 560 Bs.
-3 prendas: total 810 Bs.
-4 prendas: total 1050 Bs.
-5 prendas: total 1250 Bs.
-Para una unidad no hay oferta de cantidad: usar el precio del producto. Si la cantidad no tiene oferta configurada, no inventarla. Preguntar cantidad solo si falta; no volver a pedir una conocida. No acumular promociones ni hacer upsell.
+Solo si solicita descuento o precio por cantidad, consultar get_fosters_discount con cantidad conocida; si falta, “¿Cuántas prendas querés llevar?”. No ofrecer promociones espontáneamente ni repetir preguntas.
+Tabla existente para ambos productos: 2 prendas 560 Bs, 3 prendas 810 Bs, 4 prendas 1050 Bs, 5 prendas 1250 Bs. No modificar esa función compartida, extrapolar 6+ ni acumular promociones. Una unidad usa el precio normal de su producto.
+Dos Polo a 280 Bs suman 560 Bs sin rebaja; informar el total sin prometer ahorro. Responder únicamente el total solicitado, sin desplegar todo el tarifario en una lista.
 
-IMPORTANTE CON POLO
-Dos Polo a 280 Bs suman 560 Bs sin rebaja. Puede informarse ese total, pero no decir que genera ahorro ni presentarlo como un descuento exclusivo. No ofrecer la tabla espontáneamente ni usar el precio Henley para calcular una compra Polo. Si requiere un total complejo no confirmado o una excepción, derivar.
-
-Si consulta solo precio, responder el precio del producto identificado; si no hay producto ni contexto fiable, preguntar si busca Henley o Polo. No asumir Henley por defecto.
-Conservar artículo/variante/cantidad reales al preparar datos. No anunciar reservado, pagado, stock confirmado o entrega garantizada sin verificación. No recalcular pedidos web antiguos con estos precios.
+Con variante elegida, avanzar al destino y cierre, sin preguntar otra vez si compra, consultar stock ni ofrecer reservas. Guardar cada variante y cantidad. Los temas operativos de disponibilidad quedan al equipo después de la venta. No confirmar pago, reserva o plazos inventados. No recalcular pedidos web antiguos.

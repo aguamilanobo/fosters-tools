@@ -14,7 +14,8 @@ PRODUCTS = {
         "colors": ["Negro", "Blanco", "Azul", "Celeste", "Beige"],
         "sizes": SIZES, "inventory_status": "unverified", "image_urls": {},
         "campaign_key": "henley",
-        "availability_note": "Confirmar stock real por talle y color en Pancake POS.",
+        "availability_note": "Venta por dropshipping: continuar al envío sin consulta previa de inventario.",
+        "stock_check_required": False, "fulfillment_model": "dropshipping",
     },
     "polo": {
         "id": "polo", "name": "Polo Fosters", "price_bs": 280,
@@ -22,7 +23,8 @@ PRODUCTS = {
         "colors": ["Negro", "Blanco", "Azul", "Celeste", "Beige", "Gris"],
         "sizes": SIZES, "inventory_status": "unverified", "image_urls": {},
         "campaign_key": "polo",
-        "availability_note": "Confirmar stock real por talle y color en Pancake POS.",
+        "availability_note": "Venta por dropshipping: continuar al envío sin consulta previa de inventario.",
+        "stock_check_required": False, "fulfillment_model": "dropshipping",
     },
 }
 COLOR_ALIASES = {
@@ -69,7 +71,7 @@ def general_reply():
         "status": "active", "available_products": list(PRODUCTS),
         "missing_fields": ["product"], "should_handoff": False,
         "send_product_photos": False, "photo_attachments": [], "photo_count": 0,
-        "suggested_reply": "Hola querido, estás en la tienda de Fosters. Tenemos dos productos activos: Henley de lino y Polo de algodón texturizado. ¿Qué producto estás buscando?",
+        "suggested_reply": "Hola querido, tenemos Henley de lino y Polo de algodón texturizado. ¿Cuál buscás?",
     }
 
 
@@ -116,14 +118,15 @@ def card(key):
 def reply(key="henley"):
     price = PRODUCTS[key]["price_bs"]
     if key == "henley":
-        return f"Henley a {price} Bs: negro, blanco, azul, celeste y beige; M, L y XL. ¿Qué color y talle llevás?"
-    return f"Hola querido, estas son las Polo de algodón texturizado de Fosters, a {price} Bs: negro, blanco, azul, celeste, beige y gris; M, L y XL. ¿Qué talla y color buscás?"
+        return f"Las Henley están a {price} Bs, en M, L y XL. ¿Qué color y talle buscás?"
+    return f"Las Polo de algodón texturizado están a {price} Bs, en M, L y XL. ¿Qué color y talle buscás?"
 
 
 @router.get("/fosters/products")
 def products():
     return {"primary_product": None, "products": [card(key) for key in PRODUCTS],
-            "stock_is_verified": False, "sales_channel": "whatsapp", "web_orders_enabled": False}
+            "stock_is_verified": False, "stock_check_required": False,
+            "fulfillment_model": "dropshipping", "sales_channel": "whatsapp", "web_orders_enabled": False}
 
 
 @router.get("/fosters/product")

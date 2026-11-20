@@ -81,4 +81,8 @@ Usar BOTCAKE-INSTRUCCIONES.md como nuevo texto maestro exclusivo de Fosters. Ant
 
 ## Base de conocimiento vigente
 
-Usar los seis documentos V4 de docs/knowledge y BOTCAKE-INSTRUCCIONES.md (V11). Los seis documentos V3 del Drive aún requieren sustitución manual en los originales y actualización de la fuente de Botcake; este repositorio no los modifica remotamente. Ver docs/knowledge/REVISION-Y-PUBLICACION.md. Dos Polo a 560 Bs equivalen a dos unidades de 280 Bs: no anunciar ahorro para esa cantidad.
+Usar los seis documentos V5 de docs/knowledge y BOTCAKE-INSTRUCCIONES.md (V12). Los seis documentos V3 del Drive aún requieren sustitución manual en los originales y actualización de la fuente de Botcake; este repositorio no los modifica remotamente. Ver docs/knowledge/REVISION-Y-PUBLICACION.md. Dos Polo a 560 Bs equivalen a dos unidades de 280 Bs: no anunciar ahorro para esa cantidad.
+
+## Venta directa y estilo V12
+
+Fosters vende por dropshipping sin consulta previa de inventario. La ficha indica stock_check_required=false. El orquestador avanza con variante completa aunque wants_to_buy=false, reconoce varios colores y devuelve mensajes breves. No afirmar stock comprobado ni reservas. Transferir con datos de envío completos y detener IA, sin un resumen largo. Instalar instrucciones V12 y base V5 en Botcake; el despliegue no cambia esas fuentes remotas.

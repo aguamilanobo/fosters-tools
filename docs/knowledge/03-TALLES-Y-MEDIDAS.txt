@@ -1,4 +1,4 @@
-FOSTERS | BASE DE CONOCIMIENTO V4 — 03 TALLES Y MEDIDAS | 19/11/2026
+FOSTERS | BASE DE CONOCIMIENTO V5 — 03 TALLES Y MEDIDAS | 20/11/2026
 
 Talles comercializados: M, L, XL. Henley tiene classic fit amplio. Polo usa la misma habilidad de recomendación y la tabla Fosters vigente, según indicación del responsable. No modificar fórmulas compartidas ni inventar medidas nuevas.
 
@@ -18,3 +18,5 @@ La tabla original tiene que estar vinculada como imagen real en Botcake. Las med
 Audio Talla Hernán: recurso opcional si lo solicita o necesita esa explicación; original vinculado, una sola vez salvo pedido explícito. No reemplazar automáticamente la pregunta por altura/peso por un audio sin explicación, ni convertirlo en requisito para comprar. No inventar nombres desde referencias truncadas.
 
 Guía de estilo: únicamente si la solicita, con PDF original. No interrumpir compra, pago o derivación para ofrecer audio o PDF.
+
+ESTILO V5: comunicar el resultado en una frase, sin formulario ni tabla de rangos al cliente. No pedir altura/peso si ya eligió talle y no tiene dudas. Con variante definida, avanzar a envío sin consultar stock.

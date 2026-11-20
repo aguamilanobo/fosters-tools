@@ -10,9 +10,8 @@ from sales_policy import LOCATION_REPLY, store_info
 
 
 class SalesFlowTests(unittest.TestCase):
-    def test_location_exact_across_bots(self):
+    def test_fosters_location_is_short_and_agua_policy_is_unchanged(self):
         routes = [
-            (NextActionRequest, decide_next_action),
             (AguaNextActionRequest, decide_agua_next_action),
             (Lead, next_action),
         ]
@@ -23,6 +22,9 @@ class SalesFlowTests(unittest.TestCase):
                 self.assertTrue(result['stop_after_reply'])
                 self.assertEqual(result['missing_fields'], [])
         self.assertEqual(store_info()['message'], LOCATION_REPLY)
+        result = decide_next_action(NextActionRequest(asks_for_store_location=True))
+        self.assertEqual(result['message'], 'Somos tienda online de Santa Cruz. Enviamos a domicilio y a todo Bolivia.')
+        self.assertTrue(result['stop_after_reply'])
 
     def test_human_payment_and_complaint_keep_priority(self):
         for field in ['asks_for_human', 'asks_for_payment', 'has_complaint']:

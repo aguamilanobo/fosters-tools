@@ -13,6 +13,8 @@ from urllib import request as urllib_request, error as urllib_error, parse as ur
 
 from sales_policy import router as sales_policy_router, location_response
 from fosters_channels import is_web_order, disabled_web_order
+from fosters_sales_voice import (HANDOFF_REPLY, LOCATION_REPLY as FOSTERS_LOCATION_REPLY,
+                                 selected_colors, shipping_question, sales_policy)
 
 app = FastAPI(title="FOSTERS + aguaMILANO AI Tools")
 app.include_router(sales_policy_router)
@@ -221,6 +223,7 @@ def prepare_order(data: OrderPrepRequest):
         "missing_fields": missing_fields,
         "ready_to_order": ready_to_order,
         "order_created": False, "stock_verified": False,
+        "stock_check_required": False, "fulfillment_model": "dropshipping",
         "next_step": "ready" if ready_to_order else f"ask_for_{missing_fields[0]}",
     }
 
@@ -252,14 +255,14 @@ def prepare_shipping(data: ShippingPrepRequest):
         return {"shipping_type":"not_ready","missing_fields":["city_or_department"],"next_step":"ask_destination","handoff_required":False,"message":"¿De qué ciudad sos?"}
     if is_santa_cruz:
         if not data.location_shared:
-            return {"shipping_type":"santa_cruz","missing_fields":["location"],"next_step":"ask_location","handoff_required":False,"message":"Pedir ubicación para coordinar el envío."}
-        return {"shipping_type":"santa_cruz","missing_fields":[],"next_step":"handoff_admin","handoff_required":True,"message":"Ubicación recibida. Derivar a administrador."}
+            return {"shipping_type":"santa_cruz","missing_fields":["location"],"next_step":"ask_location","handoff_required":False,"message":"Pasame tu ubicación para coordinar el envío."}
+        return {"shipping_type":"santa_cruz","missing_fields":[],"next_step":"handoff_admin","handoff_required":True,"message":HANDOFF_REPLY}
     missing_fields = []
-    if not data.full_name: missing_fields.append("full_name")
-    if not data.ci: missing_fields.append("ci")
+    if not (data.full_name or "").strip(): missing_fields.append("full_name")
+    if not (data.ci or "").strip(): missing_fields.append("ci")
     if missing_fields:
-        return {"shipping_type":"other_department","missing_fields":missing_fields,"next_step":"ask_full_name_and_ci","handoff_required":False,"message":"Pedir únicamente los datos faltantes: " + ", ".join("nombre completo" if field == "full_name" else "CI" for field in missing_fields) + "."}
-    return {"shipping_type":"other_department","missing_fields":[],"next_step":"handoff_admin","handoff_required":True,"message":"Nombre completo y CI recibidos. Derivar a administrador."}
+        return {"shipping_type":"other_department","missing_fields":missing_fields,"next_step":"ask_full_name_and_ci","handoff_required":False,"message":shipping_question(missing_fields)}
+    return {"shipping_type":"other_department","missing_fields":[],"next_step":"handoff_admin","handoff_required":True,"message":HANDOFF_REPLY}
 
 
 # -----------------------------------------------------------------------------
@@ -1674,66 +1677,92 @@ class NextActionRequest(BaseModel):
 
 @app.post("/decide-next-action")
 def decide_next_action(data: NextActionRequest):
+    def respond(action, reason, text="", priority="normal", missing=None, **extra):
+        result = {"next_action": action, "priority": priority,
+                  "should_handoff": action == "handoff", "reason": reason,
+                  "missing_fields": missing or [], **extra}
+        if text:
+            result.update(message=text, message_hint=text)
+        if action == "handoff":
+            result["stop_after_handoff"] = True
+        return sales_policy(result)
+
     if is_web_order(data.message, data.web_order):
-        return disabled_web_order()
+        return sales_policy({**disabled_web_order(), "message": HANDOFF_REPLY,
+                             "message_hint": HANDOFF_REPLY, "stop_after_handoff": True})
     if data.asks_for_payment or data.asks_for_human or data.has_complaint:
         reason = "payment_request" if data.asks_for_payment else "complaint" if data.has_complaint else "human_request"
-        return {"next_action":"handoff","priority":"critical","should_handoff":True,"reason":reason,"missing_fields":[],"message_hint":"Derivar al administrador y detener la IA."}
-
+        return respond("handoff", reason, HANDOFF_REPLY, priority="critical")
     if data.asks_for_store_location:
-        return location_response()
+        return sales_policy({**location_response(), "message": FOSTERS_LOCATION_REPLY,
+                             "message_hint": FOSTERS_LOCATION_REPLY})
 
-    # A new explicit customer choice overrides the saved product from an older ad.
     key = fosters_product_key(data.message) or fosters_product_key(data.product)
     if data.product and key is None and not needs_product_choice(data.product):
-        return {**unavailable_product(), "priority": "normal", "missing_fields": []}
+        return sales_policy({**unavailable_product(), "priority": "normal", "missing_fields": []})
     if not data.product and contains_retired_product(data.message):
-        return {**unavailable_product(), "priority": "normal", "missing_fields": []}
-
+        return sales_policy({**unavailable_product(), "priority": "normal", "missing_fields": []})
     if data.asks_for_size_help and not data.size:
-        return {"next_action":"recommend_size","priority":"high","should_handoff":False,"reason":"size_help_requested","missing_fields":["height_cm","weight_kg"],"message_hint":"Pedir altura y peso si todavía no fueron proporcionados."}
+        return respond("recommend_size", "size_help_requested", "¿Cuánto medís y cuánto pesás?",
+                       priority="high", missing=["height_cm", "weight_kg"])
 
-    opening = data.is_opening and not data.opening_sent and not data.wants_to_buy and not data.asks_for_discount
-    if key is None and (opening or data.asks_for_catalog or data.asks_for_photos or data.wants_to_buy):
-        return {**general_reply(), "priority": "normal", "reason": "product_required"}
+    colors = selected_colors(data.color, key)
+    size = (data.size or "").strip().upper()
+    complete_variant = bool(key and colors and size in FOSTERS_PRODUCTS[key]["sizes"])
+    buying = data.wants_to_buy or complete_variant
+    opening = data.is_opening and not data.opening_sent and not buying and not data.asks_for_discount
+    if key is None and (opening or data.asks_for_catalog or data.asks_for_photos or buying or data.color or data.size):
+        return sales_policy({**general_reply(), "priority": "normal", "reason": "product_required"})
+
     if data.asks_for_catalog or data.asks_for_photos or opening:
-        plan = media_plan(data.color, product=key)
-        if not plan["send_product_photos"]:
-            return {"next_action": "ask_color", "priority": "normal", "should_handoff": False,
-                    "reason": "color_not_offered", "missing_fields": ["color"],
-                    "available_colors": FOSTERS_PRODUCTS[key]["colors"], **plan}
+        if data.color and not colors:
+            return respond("ask_color", "color_not_offered", "¿Qué color buscás?", missing=["color"],
+                           available_colors=FOSTERS_PRODUCTS[key]["colors"], send_product_photos=False,
+                           photo_attachments=[], photo_count=0)
+        plan = media_plan(colors[0] if colors else None, product=key)
+        if len(colors) > 1:
+            plan["color"] = ", ".join(colors)
+            plan["photo_attachments"] = [media_plan(c, product=key)["photo_attachments"][0] for c in colors]
+            plan["photo_count"] = len(colors)
         if opening:
             campaign = campaign_reply(product=key)
             plan.update({field: campaign[field] for field in
                          ("campaign_key", "product_id", "suggested_reply", "send_size_chart", "size_chart")})
-        return {"next_action": "send_catalog", "priority": "normal", "should_handoff": False,
-                "reason": "opening" if opening else "catalog_requested", "missing_fields": [], **plan}
+        else:
+            plan["message_hint"] = "Enviar las fotos reales, sin explicación adicional ni repetir la apertura."
+        return respond("send_catalog", "opening" if opening else "catalog_requested",
+                       campaign["suggested_reply"] if opening else "", **plan)
 
     if data.asks_for_discount:
         if not data.quantity or data.quantity < 1:
-            return {"next_action":"ask_quantity_for_discount","priority":"normal","should_handoff":False,"reason":"discount_requested_without_quantity","missing_fields":["quantity"],"message_hint":"Preguntar cuántas prendas quiere llevar."}
-        return {"next_action":"get_discount","priority":"normal","should_handoff":False,"reason":"discount_requested","missing_fields":[],"message_hint":"Usar get_fosters_discount."}
+            return respond("ask_quantity_for_discount", "discount_requested_without_quantity",
+                           "¿Cuántas prendas querés llevar?", missing=["quantity"])
+        return respond("get_discount", "discount_requested",
+                       message_hint="Consultar get_fosters_discount y responder únicamente el total solicitado.")
 
-    if data.wants_to_buy:
-        if FOSTERS_COLOR_ALIASES.get(clean_fosters(data.color)) not in FOSTERS_PRODUCTS[key]["colors"]:
-            return {"next_action":"ask_color","priority":"normal","should_handoff":False,"reason":"missing_color","missing_fields":["color"],"message_hint":"Preguntar qué color quiere."}
-        if (data.size or "").strip().upper() not in FOSTERS_PRODUCTS[key]["sizes"]:
-            return {"next_action":"ask_size","priority":"normal","should_handoff":False,"reason":"missing_size","missing_fields":["size"],"message_hint":"Preguntar qué talle busca."}
+    if buying:
+        if not colors:
+            return respond("ask_color", "missing_color", "¿Qué color buscás?", missing=["color"])
+        if size not in FOSTERS_PRODUCTS[key]["sizes"]:
+            return respond("ask_size", "missing_size", "¿Qué talle buscás?", missing=["size"])
+        chosen = {"product": key, "selected_colors": colors, "size": size}
         if not data.city and not data.department:
-            return {"next_action":"ask_destination","priority":"high","should_handoff":False,"reason":"order_ready_missing_destination","missing_fields":["city_or_department"],"message_hint":"Preguntar si es para Santa Cruz o envío a otro departamento."}
-
+            return respond("ask_destination", "order_ready_missing_destination", "¿De qué ciudad sos?",
+                           priority="high", missing=["city_or_department"], **chosen)
         destination = f"{data.city or ''} {data.department or ''}".strip().lower()
-        is_santa_cruz = "santa cruz" in destination or destination == "scz"
-        if is_santa_cruz:
+        if "santa cruz" in destination or destination == "scz":
             if not data.location_shared:
-                return {"next_action":"ask_location","priority":"high","should_handoff":False,"reason":"santa_cruz_missing_location","missing_fields":["location"],"message_hint":"Pedir ubicación para coordinar el envío."}
-            return {"next_action":"handoff","priority":"critical","should_handoff":True,"reason":"santa_cruz_shipping_ready","missing_fields":[],"message_hint":"Ubicación recibida. Derivar al administrador."}
+                return respond("ask_location", "santa_cruz_missing_location",
+                               "Pasame tu ubicación para coordinar el envío.",
+                               priority="high", missing=["location"], **chosen)
+            return respond("handoff", "santa_cruz_shipping_ready", HANDOFF_REPLY,
+                           priority="critical", **chosen)
+        missing = [name for name in ("full_name", "ci") if not (getattr(data, name) or "").strip()]
+        if missing:
+            return respond("ask_name_ci", "other_department_missing_data", shipping_question(missing),
+                           priority="high", missing=missing, **chosen)
+        return respond("handoff", "other_department_shipping_ready", HANDOFF_REPLY,
+                       priority="critical", **chosen)
 
-        missing_shipping = []
-        if not data.full_name: missing_shipping.append("full_name")
-        if not data.ci: missing_shipping.append("ci")
-        if missing_shipping:
-            return {"next_action":"ask_name_ci","priority":"high","should_handoff":False,"reason":"other_department_missing_data","missing_fields":missing_shipping,"message_hint":"Pedir únicamente nombre completo y CI."}
-        return {"next_action":"handoff","priority":"critical","should_handoff":True,"reason":"other_department_shipping_ready","missing_fields":[],"message_hint":"Nombre y CI recibidos. Derivar al administrador."}
-
-    return {"next_action":"continue_sales","priority":"normal","should_handoff":False,"reason":"no_critical_action","missing_fields":[],"message_hint":"Responder solo lo consultado, en una o dos frases. Si falta un dato para comprar, pedir únicamente ese dato; no repetir preguntas ni ofrecer pasos extra."}
+    return respond("continue_sales", "no_critical_action",
+                   message_hint="Responder solo lo consultado, en un párrafo de hasta 25 palabras. Pedir solo el próximo dato necesario.")
