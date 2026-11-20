@@ -1,7 +1,9 @@
-FOSTERS | BASE DE CONOCIMIENTO V5 — 05 PRECIOS Y DESCUENTOS BREVES | 20/11/2026
+FOSTERS | BASE DE CONOCIMIENTO V6 — 05 PRECIOS Y DESCUENTOS BREVES | 20/11/2026
+
+PRIORIDAD DE APERTURA V6: la brevedad de 25 palabras se aplica DESPUÉS de completar la apertura. En el primer ingreso comercial con Henley/Polo identificado, incluso “precio”, “info” o “quiero las Polo”, ejecutar presentación completa + cinco fotos Henley o seis Polo + tabla + pregunta final por talle/color. No esperar a que el cliente pida fotos. Usar los mismos adjuntos/acciones multimedia que ya funcionan cuando pide colores. No detenerse entre saludo y fotos ni esperar respuesta al “¿cómo estás?”. No marcar apertura enviada al detectar anuncio ni enviar solo texto. Sin producto, General sin fotos; tras elegir, apertura específica. Prioridad de pago/humano/reclamo, ubicación comercial y compra ya definida se conserva.
 
 Henley 300 Bs por unidad; Polo 280 Bs por unidad. No inventar recargos ni costos de envío.
-Si pregunta precio, responder solo el precio del producto, en una frase. No listar todas las características ni promociones. Si falta producto, preguntar “¿Henley o Polo?”.
+Si pregunta precio después de la apertura completa, responder solo el precio del producto en una frase. Si es la primera respuesta comercial con producto identificado, ejecutar apertura completa con fotos, tabla y pregunta. No listar todas las características ni promociones. Si falta producto, preguntar “¿Henley o Polo?”.
 
 Solo si solicita descuento o precio por cantidad, consultar get_fosters_discount con cantidad conocida; si falta, “¿Cuántas prendas querés llevar?”. No ofrecer promociones espontáneamente ni repetir preguntas.
 Tabla existente para ambos productos: 2 prendas 560 Bs, 3 prendas 810 Bs, 4 prendas 1050 Bs, 5 prendas 1250 Bs. No modificar esa función compartida, extrapolar 6+ ni acumular promociones. Una unidad usa el precio normal de su producto.

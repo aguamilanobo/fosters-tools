@@ -1,4 +1,6 @@
-FOSTERS | BASE DE CONOCIMIENTO V5 — 02 PRODUCTOS Y COLORES | 20/11/2026
+FOSTERS | BASE DE CONOCIMIENTO V6 — 02 PRODUCTOS Y COLORES | 20/11/2026
+
+PRIORIDAD DE APERTURA V6: la brevedad de 25 palabras se aplica DESPUÉS de completar la apertura. En el primer ingreso comercial con Henley/Polo identificado, incluso “precio”, “info” o “quiero las Polo”, ejecutar presentación completa + cinco fotos Henley o seis Polo + tabla + pregunta final por talle/color. No esperar a que el cliente pida fotos. Usar los mismos adjuntos/acciones multimedia que ya funcionan cuando pide colores. No detenerse entre saludo y fotos ni esperar respuesta al “¿cómo estás?”. No marcar apertura enviada al detectar anuncio ni enviar solo texto. Sin producto, General sin fotos; tras elegir, apertura específica. Prioridad de pago/humano/reclamo, ubicación comercial y compra ya definida se conserva.
 
 Henley: 300 Bs por unidad. 55% lino / 45% algodón; botones al pecho, classic fit amplio. M, L, XL. Negro, Blanco, Azul, Celeste, Beige. API henley.
 Polo: precio final de la prenda 280 Bs por unidad. Algodón texturizado. M, L, XL. Negro, Blanco, Azul, Celeste, Beige, Gris. API polo. No inventar porcentajes de composición ni medidas.
@@ -9,7 +11,7 @@ Dropshipping: continuar al envío sin consultas previas de stock. No pedir permi
 
 COLORES Y CIERRE
 Aceptar varios colores válidos y conservar una unidad de cada uno por defecto. Producto + talle + colores definidos → ciudad o datos de envío faltantes, sin confirmar otra vez que desea comprar ni repetir la ficha del producto.
-Si pregunta precio: “La Henley está a 300 Bs.” o “La Polo está a 280 Bs.”. Si pide colores, responderlos en una sola frase, sin lista vertical ni información extra. Si consulta stock, avanzar a la variante o envío faltante sin afirmar cantidades comprobadas.
+Si pregunta precio DESPUÉS de la apertura: “La Henley está a 300 Bs.” o “La Polo está a 280 Bs.”. Si es el primer ingreso comercial identificado, enviar apertura completa con fotos. Si pide colores, responderlos en una sola frase, sin lista vertical ni información extra. Si consulta stock, avanzar a la variante o envío faltante sin afirmar cantidades comprobadas.
 
 FOTOS
 Henley: cinco fotos originales, una por color, más tabla Fosters. Polo: seis fotos originales, más la misma tabla. Fotos Beige claro/Gris claro corresponden a Beige/Gris. General no lleva imágenes.

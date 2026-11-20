@@ -116,10 +116,19 @@ def card(key):
 
 
 def reply(key="henley"):
+    opening = opening_copy(key)
+    return opening["intro"] + " " + opening["question"]
+
+
+def opening_copy(key, color_known=False, size_known=False):
     price = PRODUCTS[key]["price_bs"]
-    if key == "henley":
-        return f"Las Henley están a {price} Bs, en M, L y XL. ¿Qué color y talle buscás?"
-    return f"Las Polo de algodón texturizado están a {price} Bs, en M, L y XL. ¿Qué color y talle buscás?"
+    label = "Henley de lino" if key == "henley" else "Polo de algodón texturizado"
+    count = "cinco" if key == "henley" else "seis"
+    intro = (f"Hola querido, ¿cómo estás? Estas son las {label} de Fosters, a {price} Bs. "
+             f"Tenemos M, L y XL, en {count} colores.")
+    question = ("¿Qué talle buscás?" if color_known else "¿Qué color buscás?" if size_known
+                else "¿Qué talle y color buscás?")
+    return {"intro": intro, "question": question}
 
 
 @router.get("/fosters/products")
@@ -153,10 +162,29 @@ def campaign_reply(product: Optional[str] = None):
         if needs_product_choice(product):
             return general_reply()
         return {**unavailable_product(), "status": "inactive"}
+    return product_opening(key)
+
+
+def product_opening(key, color_known=False, size_known=False):
+    plan = media_plan(product=key)
+    copy = opening_copy(key, color_known, size_known)
+    chart = {"attachment_key": "fosters_size_chart", "binding_required": True}
     return {
-        **media_plan(product=key), "campaign_key": key, "product_id": key, "status": "active",
-        "suggested_reply": reply(key), "manual_botcake_flow_setup_required": True,
+        **plan, "campaign_key": key, "product_id": key, "status": "active",
+        "suggested_reply": copy["intro"] + " " + copy["question"],
+        "opening_intro": copy["intro"], "opening_question": copy["question"],
+        "opening_required": True, "text_only_allowed": False,
+        "opening_complete_requires_media": True,
+        "response_style": "complete_product_opening", "max_response_words": None,
+        "required_media_count": plan["photo_count"] + 1,
+        "delivery_steps": [
+            {"type": "text", "text": copy["intro"]},
+            {"type": "product_photos", "attachments": plan["photo_attachments"]},
+            {"type": "size_chart", **chart},
+            {"type": "text", "text": copy["question"]},
+        ],
+        "media_configuration_status": "not_observed_by_backend",
         "send_size_chart": True,
-        "size_chart": {"attachment_key": "fosters_size_chart", "binding_required": True},
-        "note": "Vincular fotos y tabla originales en Botcake. Esta API prepara el plan; no envía medios.",
+        "size_chart": chart,
+        "note": "Ejecutar presentación, fotos, tabla y pregunta. Texto solo no completa la apertura. Vincular medios reales en Botcake.",
     }

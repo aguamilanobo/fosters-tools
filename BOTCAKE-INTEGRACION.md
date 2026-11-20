@@ -81,8 +81,41 @@ Usar BOTCAKE-INSTRUCCIONES.md como nuevo texto maestro exclusivo de Fosters. Ant
 
 ## Base de conocimiento vigente
 
-Usar los seis documentos V5 de docs/knowledge y BOTCAKE-INSTRUCCIONES.md (V12). Los seis documentos V3 del Drive aún requieren sustitución manual en los originales y actualización de la fuente de Botcake; este repositorio no los modifica remotamente. Ver docs/knowledge/REVISION-Y-PUBLICACION.md. Dos Polo a 560 Bs equivalen a dos unidades de 280 Bs: no anunciar ahorro para esa cantidad.
+Usar los seis documentos V6 de docs/knowledge y BOTCAKE-INSTRUCCIONES.md (V13). Los seis documentos V3 del Drive aún requieren sustitución manual en los originales y actualización de la fuente de Botcake; este repositorio no los modifica remotamente. Ver docs/knowledge/REVISION-Y-PUBLICACION.md. Dos Polo a 560 Bs equivalen a dos unidades de 280 Bs: no anunciar ahorro para esa cantidad.
 
-## Venta directa y estilo V12
+## Venta directa y estilo V13
 
-Fosters vende por dropshipping sin consulta previa de inventario. La ficha indica stock_check_required=false. El orquestador avanza con variante completa aunque wants_to_buy=false, reconoce varios colores y devuelve mensajes breves. No afirmar stock comprobado ni reservas. Transferir con datos de envío completos y detener IA, sin un resumen largo. Instalar instrucciones V12 y base V5 en Botcake; el despliegue no cambia esas fuentes remotas.
+Fosters vende por dropshipping sin consulta previa de inventario. La ficha indica stock_check_required=false. El orquestador avanza con variante completa aunque wants_to_buy=false, reconoce varios colores y devuelve mensajes breves. No afirmar stock comprobado ni reservas. Transferir con datos de envío completos y detener IA, sin un resumen largo. Instalar instrucciones V13 y base V6 en Botcake; el despliegue no cambia esas fuentes remotas.
+
+## Apertura completa V13 — corrección de clasificación y prioridad
+
+Se reprodujeron dos fallos: message="Hola, precio?", is_opening=false retornaba
+continue_sales sin fotos; wants_to_buy=true sin variante completa retornaba
+ask_color sin presentación. Ahora las entradas de precio/info/saludo e interés
+inicial, con opening_sent=false y sin variante completa, retornan send_catalog,
+reason=opening, opening_required=true y el paquete completo. No depende de una
+petición explícita de fotografías. Mantener precedencia de pago/humano/reclamo,
+ubicación comercial, descuentos solicitados y variante completa hacia envío.
+
+El paquete contiene opening_intro, opening_question, delivery_steps ordenados,
+cinco/seis photo_attachments, size_chart y required_media_count=6/7. La apertura
+usa response_style=complete_product_opening y max_response_words=null; los
+mensajes posteriores mantienen el máximo de 25 palabras. text_only_allowed=false
+expresa que el texto no sustituye la ejecución de los medios.
+
+Estas propiedades no ejecutan una acción en Botcake. Conectar send_catalog y
+reason=opening a la acción/flujo multimedia real del producto, antes de responder
+solo precio. No mapear la apertura a una respuesta de texto que ignore los medios.
+Usar opening_sent según el estado real de envío de ese producto; no true por
+anuncio detectado o texto enviado. Se eliminó el antiguo manual_botcake_flow_setup_required=true constante: el backend
+no observa la configuración del panel y no debe declarar una intervención manual
+como requisito permanente. media_configuration_status=not_observed_by_backend
+expresa esa limitación sin afirmar que los medios ya estén vinculados. Usar la
+acción multimedia existente que sí funciona al solicitar colores.
+
+Preservar los adjuntos al editar las instrucciones en Botcake. El parche prioritario
+puede pegarse al inicio sin borrar las fotos ya cargadas. Comprobar el registro de
+acciones del primer mensaje y la recepción de imágenes en WhatsApp: solo se
+verificó el contrato y clasificación del backend, no la ejecución de Botcake.
+
+No mapear $.media_sent a opening_sent: este backend devuelve un plan y no observa la entrega de Botcake. El estado de apertura se completa en la secuencia real de envío. Para clientes antiguos que mandan solo product sin contexto ni estado completado, se devuelve la apertura pendiente; la integración debe conservar el estado real para no repetirla.

@@ -28,7 +28,8 @@ class ShortSalesTests(unittest.TestCase):
     def test_aliases_and_invalid_color_do_not_invent_variants(self):
         result = self.decide(product='polo', color='plomo, beige claro', size='XL')
         self.assertEqual(result['selected_colors'], ['Gris', 'Beige'])
-        invalid = self.decide(product='henley', color='azul y gris', size='M', wants_to_buy=True)
+        invalid = self.decide(product='henley', color='azul y gris', size='M', wants_to_buy=True,
+                              opening_sent=True)
         self.assertEqual(invalid['next_action'], 'ask_color')
         self.assertEqual(invalid['missing_fields'], ['color'])
 
@@ -46,9 +47,8 @@ class ShortSalesTests(unittest.TestCase):
         self.assertEqual(self.decide(**base, city='La Paz', full_name='Prueba')['message'], '¿Me pasás tu CI?')
         self.assertEqual(self.decide(**base, city='La Paz', ci='TEST')['message'], '¿Me pasás tu nombre completo?')
 
-    def test_customer_replies_are_one_short_paragraph(self):
-        examples = [dict(product='henley', is_opening=True), dict(product='polo', is_opening=True),
-                    dict(is_opening=True), dict(product='henley', color='Negro', size='M'),
+    def test_followup_replies_are_one_short_paragraph(self):
+        examples = [dict(is_opening=True), dict(product='henley', color='Negro', size='M'),
                     dict(product='henley', color='Negro', size='M', city='La Paz'),
                     dict(asks_for_human=True), dict(asks_for_store_location=True)]
         for data in examples:

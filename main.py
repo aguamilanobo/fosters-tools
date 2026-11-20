@@ -14,7 +14,7 @@ from urllib import request as urllib_request, error as urllib_error, parse as ur
 from sales_policy import router as sales_policy_router, location_response
 from fosters_channels import is_web_order, disabled_web_order
 from fosters_sales_voice import (HANDOFF_REPLY, LOCATION_REPLY as FOSTERS_LOCATION_REPLY,
-                                 selected_colors, shipping_question, sales_policy)
+                                 selected_colors, shipping_question, sales_policy, is_entry_message)
 
 app = FastAPI(title="FOSTERS + aguaMILANO AI Tools")
 app.include_router(sales_policy_router)
@@ -28,7 +28,7 @@ app.include_router(dispatch_ops_router)
 from fosters_products import (router as fosters_products_router, PRODUCTS as FOSTERS_PRODUCTS,
                               product_key as fosters_product_key, unavailable_product,
                               contains_retired_product, media_plan, needs_product_choice,
-                              general_reply, campaign_reply, COLOR_ALIASES as FOSTERS_COLOR_ALIASES,
+                              general_reply, campaign_reply, product_opening, COLOR_ALIASES as FOSTERS_COLOR_ALIASES,
                               clean as clean_fosters)
 app.include_router(fosters_products_router)
 from fosters_ads_diagnostic import router as fosters_ads_router
@@ -1710,28 +1710,36 @@ def decide_next_action(data: NextActionRequest):
     size = (data.size or "").strip().upper()
     complete_variant = bool(key and colors and size in FOSTERS_PRODUCTS[key]["sizes"])
     buying = data.wants_to_buy or complete_variant
-    opening = data.is_opening and not data.opening_sent and not buying and not data.asks_for_discount
+    legacy_product_entry = bool(key and not any((data.message, data.color, data.size,
+                                                data.city, data.department, data.full_name, data.ci,
+                                                data.location_shared, data.asks_for_photos, data.asks_for_catalog)))
+    opening_signal = data.is_opening or is_entry_message(data.message) or data.wants_to_buy or legacy_product_entry
+    opening = (opening_signal and not data.opening_sent and not complete_variant
+               and not data.asks_for_discount)
     if key is None and (opening or data.asks_for_catalog or data.asks_for_photos or buying or data.color or data.size):
         return sales_policy({**general_reply(), "priority": "normal", "reason": "product_required"})
 
-    if data.asks_for_catalog or data.asks_for_photos or opening:
-        if data.color and not colors:
-            return respond("ask_color", "color_not_offered", "¿Qué color buscás?", missing=["color"],
-                           available_colors=FOSTERS_PRODUCTS[key]["colors"], send_product_photos=False,
-                           photo_attachments=[], photo_count=0)
+    if (not opening and key and data.color and not colors and not data.asks_for_discount
+            and (opening or buying or data.asks_for_catalog or data.asks_for_photos)):
+        return respond("ask_color", "color_not_offered", "¿Qué color buscás?", missing=["color"],
+                       available_colors=FOSTERS_PRODUCTS[key]["colors"], send_product_photos=False,
+                       photo_attachments=[], photo_count=0)
+
+    if opening:
+        # Interest alone is not a fully selected purchase. Complete the product
+        # presentation even when is_opening was omitted or wants_to_buy is true.
+        campaign = product_opening(key, color_known=bool(colors),
+                                   size_known=size in FOSTERS_PRODUCTS[key]['sizes'])
+        return respond("send_catalog", "opening", campaign["suggested_reply"], **campaign)
+
+    if data.asks_for_catalog or data.asks_for_photos:
         plan = media_plan(colors[0] if colors else None, product=key)
         if len(colors) > 1:
             plan["color"] = ", ".join(colors)
             plan["photo_attachments"] = [media_plan(c, product=key)["photo_attachments"][0] for c in colors]
             plan["photo_count"] = len(colors)
-        if opening:
-            campaign = campaign_reply(product=key)
-            plan.update({field: campaign[field] for field in
-                         ("campaign_key", "product_id", "suggested_reply", "send_size_chart", "size_chart")})
-        else:
-            plan["message_hint"] = "Enviar las fotos reales, sin explicación adicional ni repetir la apertura."
-        return respond("send_catalog", "opening" if opening else "catalog_requested",
-                       campaign["suggested_reply"] if opening else "", **plan)
+        plan["message_hint"] = "Enviar las fotos reales, sin explicación adicional ni repetir la apertura."
+        return respond("send_catalog", "catalog_requested", **plan)
 
     if data.asks_for_discount:
         if not data.quantity or data.quantity < 1:

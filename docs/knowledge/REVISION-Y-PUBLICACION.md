@@ -1,11 +1,12 @@
-# Actualización Fosters V5 / instrucciones V12 — 20/11/2026
+# Actualización Fosters V6 / instrucciones V13 — 20/11/2026
 
-Sustituye las bases V3/V4 y las instrucciones V11. Henley sigue a 300 Bs, Polo a
+Sustituye las bases V3/V4/V5 y las instrucciones V11/V12. Henley sigue a 300 Bs, Polo a
 280 Bs; colores, descuentos y recomendación de talla sin cambios.
 
 ## Comportamiento nuevo
 
-- Un párrafo, una frase normalmente, máximo dos y 25 palabras. Sin listas ni
+- APERTURA EXCEPTUADA: presentación completa, cinco fotos Henley o seis Polo, tabla y pregunta final incluso ante precio/info inicial. No esperar pedido de fotos.
+- Después de la apertura: un párrafo, una frase normalmente, máximo dos y 25 palabras. Sin listas ni
   mensajes de formulario. No repetir datos ni narrar pasos internos.
 - Dropshipping: no se exige ni consulta inventario antes de avanzar la venta.
   La gestión operativa posterior queda al equipo. No afirmar reservas hechas,
@@ -19,7 +20,7 @@ Sustituye las bases V3/V4 y las instrucciones V11. Henley sigue a 300 Bs, Polo a
 
 ## Aplicación en Botcake
 
-Reemplazar el texto maestro por V12 y las seis fuentes de conocimiento por V5.
+Reemplazar el texto maestro por V13 y las seis fuentes de conocimiento por V6.
 Los documentos originales del Drive y el panel de Botcake no se modificaron:
 no hay herramientas autenticadas de esas aplicaciones en esta sesión. Entregar
 archivos Word/TXT directos, sin ZIP. Usar base consolidada o seis documentos,
@@ -56,3 +57,27 @@ reclamo y fotos explícitas para mantener sus prioridades. Revisar recepción de
 imágenes y reanudación de IA por separado, con un contacto de prueba.
 
 AguaMILANO conserva su código y sus instrucciones; estas reglas son solo Fosters.
+
+## Diagnóstico y prueba real de la apertura
+
+No se comprobó la entrega de imágenes desde esta sesión. No se cuenta con acceso
+al panel de Botcake ni una sesión controlable del navegador para editar sus
+flujos, consultar el registro del contacto o comprobar recepción en WhatsApp.
+La cuenta de Botcake configurada en Render no expone por sí sola los adjuntos/IDs
+de flujos al proceso de desarrollo. No se enviaron pruebas a contactos reales.
+
+Aplicación mínima: pegar el parche prioritario al inicio de instrucciones sin
+borrar los adjuntos existentes; actualizar la descripción de decide_fosters_next_action
+para exigir is_opening=true en el primer ingreso comercial, aunque diga precio.
+Mantener opening_sent=false hasta terminar los medios. Si Botcake devuelve
+send_catalog pero solo manda texto, revisar la acción que consume ese resultado:
+debe ejecutar los mismos adjuntos/flujo que ya funciona al pedir “los colores”.
+No basta con guardar next_action en un campo sin tener la acción conectada.
+
+La prueba mínima tiene dos casos: primer mensaje “Hola, precio?” con producto
+Henley y estado de apertura pendiente → presentación, cinco fotos, tabla y
+pregunta; primer mensaje “Hola, quiero las polos” → presentación, seis fotos,
+tabla y pregunta. Después responder “L azul y negra”: debe avanzar al envío sin
+repetir apertura. Verificar también respuesta de IA después de los medios y
+prioridad de humano/pago. Usar un contacto propio de prueba, con estado de
+apertura del producto pendiente; no resetear masivamente contactos de clientes.
